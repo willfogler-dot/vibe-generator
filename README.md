@@ -1,18 +1,17 @@
 # Vibe Generator
 
-Music TV for your desk. Play anything on your computer (Spotify app, YouTube, anything), share the audio with this page, and it directs a show that follows the song.
+TV for music: a realistic, cinematic valley you can leave running while music plays. The camera glides continuously through the landscape, and the world responds to the song: wind moves through the grass and trees with the bass, and the flight's speed and altitude follow the song's energy over time.
 
-**Two picture engines (Settings > Picture):**
-- **Real footage (default):** real drone and timelapse footage of places that look like fantasy (Iceland, Dolomites, Faroe Islands, misty forests, aurora), pulled from Pixabay (or Pexels) with your free API key and cut to the beat, with grading, light leaks, dust/fireflies and melody wind streaks layered on. Each clip is credited on screen.
-- **3D world:** a procedural open-world landscape flown by a beat-synced camera director.
+## Try it
+1. Open the site (Chrome or Edge recommended) and wait for "Building the world…" to finish.
+2. Click **Music source** and pick one:
+   - **Play an audio file**: most reliable; any MP3/M4A/WAV/FLAC.
+   - **Share a tab or system audio**: Chrome/Edge. Use the Spotify web player tab with "Share tab audio", or on Windows "Entire screen" + "Share system audio".
+   - **Use the microphone**: works anywhere, lowest quality.
+3. **Settings** lets you pin the time of day, toggle cinema bars, and turn on the experimental note orb.
 
-- **Director:** the camera cuts between shots on the downbeat (low tracking through grass, drone flyovers, orbits around ruins, locked-off wide shots, crane reveals on big moments). Quiet passages get calm shots, loud ones get epic ones.
-- **Scenes:** River Valley, Highlands, Deep Forest, Coastline. Auto picks from the song's mood (energy, tempo, major/minor, brightness).
-- **Time of day:** Dawn, Midday, Golden Hour, Dusk, Night. Auto follows your clock.
-- **Music mapping:** energy sets speed and wind, bass sends gusts rolling through the grass, the melody draws wind streaks, chord changes shift the light.
-- **Jazz covers:** drop in a MIDI file and it plays as a jazz arrangement with its own ride, timed to the notes.
+There is no direct Spotify connection. Nothing is recorded or uploaded.
 
-## Making it react
-Click **Share audio**, choose **Entire screen**, and turn on **Also share system audio** (Chrome or Edge on Windows). The page only measures the sound locally; nothing is recorded or sent anywhere. The page does not connect to Spotify or any music service.
+The previous version is at `/classic/`. Plans are in [ROADMAP.md](ROADMAP.md).
 
-MIDI files and settings are stored in your browser only.
+Credits: Three.js (MIT), EZ-Tree by Daniel Greenheck (MIT; bark textures from Poly Haven and TextureCan, CC0), horse and bird models from the three.js examples.

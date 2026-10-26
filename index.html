@@ -4,17 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Vibe Generator</title>
-<meta name="description" content="A music-reactive 3D ride that follows whatever is playing on your computer.">
+<meta name="description" content="Music TV: a cinematic fantasy world that plays along with whatever is on your computer.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script type="importmap">{"imports":{"three":"./js/three.module.min.js","three/addons/":"./js/addons/"}}</script>
 <style>
 /* Layout: full-bleed 3D ride; quiet header top-left with listen/library/settings top-right; library drawer left, settings drawer right; transport docked bottom. */
 :root {
@@ -116,9 +110,12 @@ input[type=text], input[type=search], select { font: 400 13px var(--sans); color
 .card a { color: var(--amber); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 body.live .transport { display: none; }
+.loadmsg { display: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); font: 500 13px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
+body.loading .loadmsg { display: block; }
 .drop { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(13,8,16,.8); font: 700 clamp(28px, 5vw, 48px)/1 var(--hand); color: var(--amber); border: 2px dashed var(--amber); pointer-events: none; z-index: 25; }
 @media (max-width: 640px) { .transport { grid-template-columns: auto auto 1fr; } .transport .art, .transport .time, #prevBtn, #nextBtnT { display: none; } .actions .btn .lbl { display: none; } }
 @media (prefers-reduced-motion: reduce) { .fade { transition: none; } }
+.src { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); } .src .btn { justify-self: start; }
 </style>
 </head>
 <body>
@@ -132,7 +129,7 @@ body.live .transport { display: none; }
     </div>
     <div class="actions">
       <button class="btn" id="libBtn" type="button" aria-controls="lib" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h3v14H4zM9 5h3v14H9zM14.5 5.6l2.9-.8 3.6 13.5-2.9.8z"/></svg><span class="lbl">Covers</span></button>
-      <button class="btn" id="listenBtn" type="button"><span class="dot"></span><span class="lbl" id="listenLbl">Share audio</span></button>
+      <button class="btn" id="listenBtn" type="button"><span class="dot"></span><span class="lbl" id="listenLbl">Music source</span></button>
       <button class="btn" id="setBtn" type="button" aria-controls="settings" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 6h11v2H3zm14 0h4v2h-4zm-3-2h2v6h-2zM3 16h4v2H3zm8 0h10v2H11zm-3-2h2v6H8z"/></svg><span class="lbl">Settings</span></button>
     </div>
   </header>
@@ -161,11 +158,6 @@ body.live .transport { display: none; }
 
 <section class="drawer right" id="settings" hidden aria-label="Settings">
   <h2>Settings</h2>
-  <div class="field"><h3>Picture</h3>
-    <div class="seg" id="engSeg"><button class="btn" type="button" data-v="footage">Real footage</button><button class="btn" type="button" data-v="3d">3D world</button></div></div>
-  <div class="field" id="pxField" hidden><h3>Footage key</h3>
-    <div class="row"><input type="text" id="pxKey" placeholder="Paste your Pixabay API key" autocomplete="off" spellcheck="false" style="flex:1;min-width:0"><button class="btn" type="button" id="pxSaveBtn">Save</button></div>
-    <div class="hint">Footage comes from <a href="https://pixabay.com" target="_blank" rel="noopener" style="color:var(--amber)">Pixabay</a> (a Pexels key also works). Free; each clip is credited on screen.</div></div>
   <div class="field"><h3>Scene</h3>
     <div class="seg" id="worldSeg"></div>
     <div class="hint">Auto picks the landscape from the mood of the song.</div></div>
@@ -173,7 +165,7 @@ body.live .transport { display: none; }
     <div class="seg" id="todSeg"></div>
     <div class="hint">Auto follows your clock.</div></div>
   <div class="field"><h3>Visuals</h3>
-    <div class="seg"><button class="btn" type="button" id="mellowBtn">Calm visuals</button><button class="btn" type="button" id="barsBtn">Cinema bars</button><button class="btn" type="button" id="chordsBtn">Chord names</button><button class="btn" type="button" id="sheetBtn">Chord chart</button></div></div>
+    <div class="seg"><button class="btn" type="button" id="mellowBtn">Calm visuals</button><button class="btn" type="button" id="barsBtn">Cinema bars</button><button class="btn" type="button" id="orbBtn">Note orb (experimental)</button><button class="btn" type="button" id="chordsBtn">Chord names</button><button class="btn" type="button" id="sheetBtn">Chord chart</button></div></div>
   <div class="field"><h3>Jazz covers</h3>
     <div class="seg" id="leadSeg"><button class="btn" type="button" data-v="flugel">Flugelhorn</button><button class="btn" type="button" data-v="vibes">Vibraphone</button><button class="btn" type="button" data-v="rhodes">Rhodes</button></div>
     <div class="lab" style="display:flex;justify-content:space-between;font:500 11px/1 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.1em"><label for="tempo">Tempo</label><output id="tempoOut">63 bpm</output></div><input type="range" id="tempo" min="40" max="160" value="63">
@@ -185,30 +177,25 @@ body.live .transport { display: none; }
 
 <div class="modal" id="shareHelp" hidden>
   <div class="card" role="dialog" aria-labelledby="shareTitle">
-    <h2 id="shareTitle">Let the visuals hear the music</h2>
-    <ol>
-      <li>Click <b>Share now</b>. Your browser asks what to share.</li>
-      <li>Pick the <b>Entire screen</b> tab and select your screen.</li>
-      <li>Turn on <b>Also share system audio</b> at the bottom, then click <b>Share</b>.</li>
-    </ol>
-    <div class="hint">Nothing is recorded or sent anywhere. The page only measures the sound to drive the visuals. Stop anytime from this button or the browser's sharing bar.</div>
-    <div class="row"><button class="btn primary" type="button" id="shareGo">Share now</button><button class="btn" type="button" id="shareCancel">Cancel</button></div>
-  </div>
-</div>
-<div class="modal" id="pxHelp" hidden>
-  <div class="card" role="dialog" aria-labelledby="pxTitle">
-    <h2 id="pxTitle">One free key for real footage</h2>
-    <ol>
-      <li>Create a free account at <a href="https://pixabay.com/accounts/register/" target="_blank" rel="noopener">pixabay.com</a> (about a minute).</li>
-      <li>While logged in, open <a href="https://pixabay.com/api/docs/#api_search_videos" target="_blank" rel="noopener">pixabay.com/api/docs</a>. Your key is shown in green under <b>Parameters</b>, next to <b>key</b>.</li>
-      <li>Copy it and paste it here.</li>
-    </ol>
-    <input type="text" id="pxKey2" placeholder="Pixabay API key (looks like 12345678-abc...)" autocomplete="off" spellcheck="false">
-    <div class="hint">The key stays in this browser. Until then the picture stays dark. You can also switch to the 3D world in Settings.</div>
-    <div class="row"><button class="btn primary" type="button" id="pxGo">Start footage</button><button class="btn" type="button" id="pxLater">Later</button></div>
+    <h2 id="shareTitle">Choose the music source</h2>
+    <div class="src">
+      <label class="btn primary" for="audioFile">Play an audio file<input id="audioFile" type="file" accept="audio/*" hidden></label>
+      <div class="hint">Most reliable. Any MP3, M4A, WAV or FLAC on your computer plays here and is analysed directly.</div>
+    </div>
+    <div class="src">
+      <button class="btn" type="button" id="shareGo">Share a tab or system audio</button>
+      <div class="hint">Chrome or Edge. To use the Spotify web player, pick its tab and turn on <b>Share tab audio</b>. On Windows you can pick <b>Entire screen</b> + <b>Share system audio</b> to catch the Spotify app. Not supported in Safari or Firefox.</div>
+    </div>
+    <div class="src">
+      <button class="btn" type="button" id="micGo">Use the microphone</button>
+      <div class="hint">Works anywhere and hears whatever is playing in the room. Lowest quality; fine for a feel of the beat.</div>
+    </div>
+    <div class="hint">There is no direct Spotify connection. Nothing is recorded or sent anywhere; the page only measures the sound.</div>
+    <div class="row"><button class="btn" type="button" id="shareCancel">Cancel</button></div>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div class="loadmsg" id="loadMsg">Building the world…</div>
 <div class="drop" id="dropZone" hidden>Drop MIDI to add it</div>
 
 <script>
@@ -648,1000 +635,9 @@ const Synth = (() => {
 
 </script>
 <script>
-// ===== World: Music TV — cinematic landscapes directed by the song =====
-const World = (() => {
-  if (typeof THREE === 'undefined') return null;
-
-  // ---------------- helpers ----------------
-  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-  const R = (a, b) => a + (b - a) * rnd(), pick = a => a[Math.floor(rnd() * a.length)];
-  const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-  const LC = h => new THREE.Color(h).convertSRGBToLinear();
-  const clamp = (x, a, b) => x < a ? a : x > b ? b : x, mix = (a, b, t) => a + (b - a) * t;
-  const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-  const tv = V(), tv2 = V(), tq = new THREE.Quaternion(), ts = V(), tm = new THREE.Matrix4(), tc = new THREE.Color(), sc = new THREE.Color(), UP = V(0, 1, 0), te = new THREE.Euler();
-  const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
-  const Mx = (x, y, z, sx = 1, sy = sx, sz = sx, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(sx, sy, sz));
-
-  // ---------------- terrain math (CPU, exact) ----------------
-  function h2(ix, iz) { let h = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
-  function vn(x, z) { const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz, ux = fx * fx * (3 - 2 * fx), uz = fz * fz * (3 - 2 * fz);
-    const a = h2(ix, iz), b = h2(ix + 1, iz), c = h2(ix, iz + 1), d = h2(ix + 1, iz + 1); return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz; }
-  function fbm(x, z, o) { let v = 0, a = 0.5, s = 0; for (let i = 0; i < o; i++) { v += a * vn(x, z); s += a; const nx = x * 1.6 - z * 1.2 + 17.1, nz = x * 1.2 + z * 1.6 - 9.3; x = nx; z = nz; a *= 0.5; } return v / s * 2 - 1; }
-  function ridge(x, z, o) { let v = 0, a = 0.55, w = 1, s = 0; for (let i = 0; i < o; i++) { let n = 1 - Math.abs(vn(x, z) * 2 - 1); n *= n; v += n * a * w; s += a; w = clamp(n * 1.8, 0, 1); const nx = x * 1.7 - z * 1.1 + 5.3, nz = x * 1.1 + z * 1.7 + 2.9; x = nx; z = nz; a *= 0.5; } return v / s; }
-  const pathX = d => Math.sin(d * 0.0021) * 140 + Math.sin(d * 0.0057 + 1.3) * 45;
-
-  // ---------------- scenes (landscape) ----------------
-  const SCN = {
-    valley: { name: 'River Valley', hill: 26, rough: 2.2, mtn: 300, mtnIn: 170, vw: 85, vfloor: 7, river: 9, rw: 10, water: 0.5, coast: 0, snow: 250,
-      grass: 1, grassH: 1, trees: 0.45, conifer: 0.3, ruins: 1, islands: 1, rocks: 0.6, dry: 0.35,
-      grassA: '#4c6a30', grassB: '#647c3a', dryC: '#8e8850', rock: '#7d7468', rock2: '#5d5a56', sand: '#a89a78', snowC: '#eef2f6', leaf: ['#3f6a2a', '#4f7a30', '#5d7d2c', '#6b8a34'], needle: ['#2a4a2c', '#2f5232'], waterC: ['#1d3b40', '#2e5a5a'] },
-    highlands: { name: 'Highlands', hill: 48, rough: 3.2, mtn: 560, mtnIn: 115, vw: 80, vfloor: 26, river: 7, rw: 16, water: 20, coast: 0, snow: 190,
-      grass: 0.85, grassH: 0.7, trees: 0.35, conifer: 0.85, ruins: 0.6, islands: 0.6, rocks: 1, dry: 0.55,
-      grassA: '#4e6434', grassB: '#68783e', dryC: '#8a7c50', rock: '#76736e', rock2: '#55565a', sand: '#8a8070', snowC: '#f2f5fa', leaf: ['#4a6a2e', '#5a7434'], needle: ['#26402a', '#2c4a30', '#22382a'], waterC: ['#16323c', '#2a4e58'] },
-    forest: { name: 'Deep Forest', hill: 24, rough: 2, mtn: 220, mtnIn: 150, vw: 70, vfloor: 3, river: 6, rw: 7, water: 0, coast: 0, snow: 400,
-      grass: 0.7, grassH: 0.85, trees: 1, conifer: 0.5, ruins: 0.7, islands: 0.25, rocks: 0.7, dry: 0.1,
-      grassA: '#3f5e28', grassB: '#527030', dryC: '#6e7038', rock: '#6e6a60', rock2: '#4f504a', sand: '#7a7058', snowC: '#eef2f6', leaf: ['#355e24', '#3f6a28', '#4a7230', '#2f5222'], needle: ['#22402a', '#28482c'], waterC: ['#142c2c', '#24464a'] },
-    coast: { name: 'Coastline', hill: 22, rough: 2.4, mtn: 200, mtnIn: 180, vw: 60, vfloor: 12, river: 0, rw: 1, water: 0, coast: 70, snow: 400,
-      grass: 1, grassH: 0.8, trees: 0.25, conifer: 0.4, ruins: 0.8, islands: 0.5, rocks: 0.8, dry: 0.6,
-      grassA: '#5a7234', grassB: '#748440', dryC: '#9a8e58', rock: '#8a8070', rock2: '#68625a', sand: '#c2b08a', snowC: '#eef2f6', leaf: ['#4a6e2c', '#5a7a32'], needle: ['#2c4a2e', '#33522f'], waterC: ['#103a48', '#2a6670'] }
-  };
-  const SC_ORDER = ['valley', 'highlands', 'forest', 'coast'];
-  let SC = SCN.valley;
-
-  function heightAt(x, z) {
-    const P = SC, d = -z, dx = x - pathX(d), adx = Math.abs(dx);
-    let h = fbm(x * 0.0042 + 31.7, z * 0.0042 - 11.3, 5) * P.hill + fbm(x * 0.031, z * 0.031, 3) * P.rough;
-    h += ridge(x * 0.0014 + 3.1, z * 0.0014 - 7.7, 6) * P.mtn * sstep(P.mtnIn, P.mtnIn + 320, adx);
-    const v = Math.exp(-(dx * dx) / (P.vw * P.vw));
-    h = mix(h, P.vfloor + h * 0.25, v);
-    if (P.river) h -= P.river * Math.exp(-(dx * dx) / (P.rw * P.rw));
-    if (P.coast) { const s = sstep(P.coast, P.coast + 30, dx + fbm(z * 0.008, 3.3, 3) * 25); h = mix(h, -16 + fbm(x * 0.01, z * 0.01, 3) * 5, s); }
-    return h;
-  }
-  const groundAt = (x, z) => Math.max(heightAt(x, z), SC.water + 0.6);
-
-  // ---------------- time of day ----------------
-  const TOD = {
-    dawn: { name: 'Dawn', el: 6, az: 55, sun: '#ffc6a2', si: 2.4, zen: '#4f6aa6', hor: '#eebfaa', fog: '#b4aec0', fogS: '#ffd2b0', aSky: '#6b7cae', aGnd: '#4a4448', aI: 0.55, cl: '#ffdccc', cd: '#8a86a8', cover: 0.45, stars: 0.1, moon: 0, exp: 1.25, fogD: 0.0013, glow: 1, disc: 30, motes: '#ffe8c0' },
-    day: { name: 'Midday', el: 52, az: 30, sun: '#fff1dc', si: 3.0, zen: '#3c72c4', hor: '#b6d0ea', fog: '#a6c0da', fogS: '#efe4cc', aSky: '#7d9ed0', aGnd: '#555a40', aI: 0.55, cl: '#ffffff', cd: '#909db6', cover: 0.42, stars: 0, moon: 0, exp: 0.95, fogD: 0.0009, glow: 0.6, disc: 25, motes: '#fff6d8' },
-    golden: { name: 'Golden Hour', el: 9, az: -22, sun: '#ffb070', si: 3.0, zen: '#3f64a6', hor: '#e8b28e', fog: '#a6a0a8', fogS: '#f6b880', aSky: '#6a7cb0', aGnd: '#4a3e30', aI: 0.55, cl: '#ffd2a2', cd: '#6e6a8e', cover: 0.4, stars: 0, moon: 0, exp: 0.95, fogD: 0.0008, glow: 1.2, disc: 40, motes: '#ffdca0' },
-    dusk: { name: 'Dusk', el: -1.5, az: -35, sun: '#ff8a5c', si: 1.4, zen: '#1e2a58', hor: '#d88468', fog: '#544a6a', fogS: '#c87660', aSky: '#3c4676', aGnd: '#2a2430', aI: 0.6, cl: '#ff9e7e', cd: '#363256', cover: 0.4, stars: 0.45, moon: 0, exp: 1.7, fogD: 0.0013, glow: 1.4, disc: 0, motes: '#ffd0a0' },
-    night: { name: 'Night', el: 32, az: 18, sun: '#9fb4ff', si: 0.38, zen: '#040918', hor: '#18233f', fog: '#121a30', fogS: '#24345c', aSky: '#22305a', aGnd: '#0c1018', aI: 0.7, cl: '#3a4a70', cd: '#0e1428', cover: 0.3, stars: 1, moon: 1, exp: 2.4, fogD: 0.0011, glow: 0.3, disc: 0, motes: '#d8ff9a' }
-  };
-  const TOD_ORDER = ['dawn', 'day', 'golden', 'dusk', 'night'];
-  let TD = TOD.day, curTod = 'day', wantTod = 'auto';
-  function clockTod() { const d = new Date(), h = d.getHours() + d.getMinutes() / 60; return h >= 5 && h < 8 ? 'dawn' : h >= 8 && h < 16.5 ? 'day' : h >= 16.5 && h < 19 ? 'golden' : h >= 19 && h < 20.5 ? 'dusk' : 'night'; }
-
-  // ---------------- shared uniforms + GLSL ----------------
-  const PU = {
-    time: { value: 0 }, sunDir: { value: V(0, 1, 0) }, sunCol: { value: new THREE.Color() }, ambSky: { value: new THREE.Color() }, ambGnd: { value: new THREE.Color() },
-    fogCol: { value: new THREE.Color() }, fogSun: { value: new THREE.Color() }, fogDen: { value: 0.001 }, fogFall: { value: 0.012 }, fogBase: { value: 0 }, exposure: { value: 1 },
-    cloudShadow: { value: 0.35 }, cloudSpeed: { value: 0.02 }, windDir: { value: new THREE.Vector2(0.6, -0.8) }, windAmp: { value: 0.3 },
-    skyZen: { value: new THREE.Color() }, skyHor: { value: new THREE.Color() }, cloudLit: { value: new THREE.Color() }, cloudDark: { value: new THREE.Color() },
-    cover: { value: 0.4 }, stars: { value: 0 }, moon: { value: 0 }, sunDisc: { value: 20 }, sunGlow: { value: 1 },
-    grassA: { value: new THREE.Color() }, grassB: { value: new THREE.Color() }, grassDry: { value: new THREE.Color() }, dryAmt: { value: 0.3 },
-    rockA: { value: new THREE.Color() }, rockB: { value: new THREE.Color() }, sandC: { value: new THREE.Color() }, snowC: { value: new THREE.Color() }, snowLine: { value: 250 }, waterLevel: { value: 0 },
-    gust: { value: [new THREE.Vector4(0, 0, -99, 0), new THREE.Vector4(0, 0, -99, 0), new THREE.Vector4(0, 0, -99, 0), new THREE.Vector4(0, 0, -99, 0)] }, fadeR: { value: 60 }, camXZ: { value: new THREE.Vector2() },
-    waterDeep: { value: new THREE.Color() }, waterShal: { value: new THREE.Color() }, glint: { value: 0 }
-  };
-  const GL_COMMON = `
-    uniform float time, fogDen, fogFall, fogBase, exposure, cloudShadow, cloudSpeed, windAmp;
-    uniform vec3 sunDir, sunCol, ambSky, ambGnd, fogCol, fogSun; uniform vec2 windDir;
-    float hsh(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
-    float gn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
-      return mix(mix(hsh(i), hsh(i+vec2(1.0,0.0)), u.x), mix(hsh(i+vec2(0.0,1.0)), hsh(i+vec2(1.0,1.0)), u.x), u.y); }
-    float gfbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a*gn(p); p = mat2(1.6,1.2,-1.2,1.6)*p + 3.7; a *= 0.5; } return v / 0.9375; }
-    vec3 fogApply(vec3 c, vec3 w, float dist, vec3 rd){
-      float hAvg = 0.5*(cameraPosition.y + w.y) - fogBase; float dens = fogDen * exp(-clamp(hAvg, -60.0, 400.0) * fogFall);
-      float f = 1.0 - exp(-dist * dens); f = max(f, smoothstep(1150.0, 1600.0, dist));
-      float s = pow(max(dot(rd, sunDir), 0.0), 8.0); return mix(c, mix(fogCol, fogSun, s), clamp(f, 0.0, 1.0)); }
-    vec3 finish(vec3 c){ c *= exposure; c = (c*(2.51*c + 0.03)) / (c*(2.43*c + 0.59) + 0.14); return pow(clamp(c, 0.0, 1.0), vec3(1.0/2.2)); }
-    float cloudShade(vec3 w){ vec2 p = mod(w.xz, 8192.0)*0.0016 + windDir * time * cloudSpeed; return 1.0 - cloudShadow * smoothstep(0.48, 0.72, gfbm(p)); }`;
-  const GL_SKY = `
-    uniform vec3 skyZen, skyHor, cloudLit, cloudDark; uniform float cover, stars, moon, sunDisc, sunGlow;
-    vec3 skyBase(vec3 rd){ float h = rd.y; vec3 c = mix(skyHor, skyZen, pow(clamp(h, 0.0, 1.0), 0.45));
-      c = mix(c, fogCol, smoothstep(0.02, -0.15, h)); float s = max(dot(rd, sunDir), 0.0);
-      c += sunCol * (pow(s, 5.0)*0.04 + pow(s, 40.0)*0.12) * sunGlow; return c; }`;
-  const GL_GRASS = `
-    uniform vec3 grassA, grassB, grassDry; uniform float dryAmt;
-    vec3 grassCol(vec2 xz){ vec2 q = mod(xz, 4096.0); float a = gfbm(q*0.035); float b = gfbm(q*0.0045 + 7.1);
-      vec3 g = mix(grassA, grassB, smoothstep(0.3, 0.75, a)); return mix(g, grassDry, smoothstep(0.45, 0.75, b) * dryAmt); }`;
-
-  // ---------------- renderer ----------------
-  let Rr, scene, cam, composer, bloom, rays, post, canvas, pr = 1, slowT = 0, frames = 0, dtAvg = 16;
-  let mode = 'none', want = 'auto', cur = 'valley', songMood = null;
-  const W = { d: 0, speed: 8, level: 0.3, hit: 0, kick: 0, swell: 0, t: 0, flare: 0, hue: 0, hueT: 0, chordFlash: 0, chords: 0, calm: false, fade: 1, fadeDir: -1, pending: null, gustI: 0, streakT: 0, lastBig: -99, noRender: false, letterbox: true, ambBird: 20 };
-
-  // ---------------- terrain tiles ----------------
-  const TILE = 256, NR = 6, tiles = new Map(), spare = [], idxCache = {};
-  let terrMat, tileKey = '', tileJobs = [];
-  function tileIndex(segs) {
-    if (idxCache[segs]) return idxCache[segs];
-    const n = segs + 1, idx = [];
-    for (let j = 0; j < segs; j++) for (let i = 0; i < segs; i++) { const a = j * n + i, b = a + 1, c = a + n, d = c + 1; idx.push(a, c, b, b, c, d); }
-    const per = []; for (let i = 0; i < segs; i++) per.push(i); for (let j = 0; j < segs; j++) per.push(j * n + segs); for (let i = segs; i > 0; i--) per.push(segs * n + i); for (let j = segs; j > 0; j--) per.push(j * n);
-    const base = n * n, P = per.length;
-    for (let k = 0; k < P; k++) { const a = per[k], b = per[(k + 1) % P], sa = base + k, sb = base + (k + 1) % P; idx.push(a, sa, b, b, sa, sb); }
-    return (idxCache[segs] = { idx, per });
-  }
-  function tileGeo(segs) {
-    const n = segs + 1, cnt = n * n + 4 * segs, g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cnt * 3), 3)); g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(cnt * 3), 3));
-    g.setIndex(tileIndex(segs).idx); g.boundingSphere = new THREE.Sphere(V(), 1); return g;
-  }
-  function fillTile(t) {
-    const segs = t.segs, n = segs + 1, st = TILE / segs, x0 = t.ix * TILE, z0 = t.iz * TILE, m = n + 2, H = new Float32Array(m * m);
-    for (let j = -1; j <= n; j++) for (let i = -1; i <= n; i++) H[(j + 1) * m + (i + 1)] = heightAt(x0 + i * st, z0 + j * st);
-    const g = t.geos[segs], P = g.attributes.position.array, N = g.attributes.normal.array; let lo = 1e9, hi = -1e9;
-    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
-      const k = j * n + i, c = (j + 1) * m + (i + 1), h = H[c]; lo = Math.min(lo, h); hi = Math.max(hi, h);
-      P[k * 3] = x0 + i * st; P[k * 3 + 1] = h; P[k * 3 + 2] = z0 + j * st;
-      let nx = H[c - 1] - H[c + 1], ny = 2 * st, nz = H[c - m] - H[c + m]; const l = Math.hypot(nx, ny, nz); N[k * 3] = nx / l; N[k * 3 + 1] = ny / l; N[k * 3 + 2] = nz / l;
-    }
-    const per = tileIndex(segs).per, base = n * n, drop = st * 2 + 6;
-    for (let k = 0; k < per.length; k++) { const a = per[k], s = base + k; P[s * 3] = P[a * 3]; P[s * 3 + 1] = P[a * 3 + 1] - drop; P[s * 3 + 2] = P[a * 3 + 2]; N[s * 3] = N[a * 3]; N[s * 3 + 1] = N[a * 3 + 1]; N[s * 3 + 2] = N[a * 3 + 2]; }
-    g.attributes.position.needsUpdate = true; g.attributes.normal.needsUpdate = true;
-    g.boundingSphere.center.set(x0 + TILE / 2, (lo + hi) / 2, z0 + TILE / 2); g.boundingSphere.radius = Math.hypot(TILE * 0.71, (hi - lo) / 2 + drop);
-    t.mesh.geometry = g; t.mesh.visible = true;
-  }
-  function placeTile(w) {
-    const key = w.ix + ',' + w.iz; let t = tiles.get(key);
-    if (!t) { t = spare.pop(); if (!t) { t = { geos: {}, mesh: new THREE.Mesh(tileGeo(12), terrMat) }; scene.add(t.mesh); } tiles.set(key, t); }
-    t.ix = w.ix; t.iz = w.iz; t.segs = w.segs; if (!t.geos[w.segs]) t.geos[w.segs] = tileGeo(w.segs);
-    fillTile(t);
-  }
-  function updateTiles(x, z, budget, force) {
-    const cix = Math.floor(x / TILE), ciz = Math.floor(z / TILE), key = cix + ',' + ciz;
-    if (key !== tileKey || force) {
-      tileKey = key; const wantT = new Map();
-      for (let oz = -NR; oz <= NR; oz++) for (let ox = -NR; ox <= NR; ox++) { const r = Math.max(Math.abs(ox), Math.abs(oz)); wantT.set((cix + ox) + ',' + (ciz + oz), { ix: cix + ox, iz: ciz + oz, r, segs: r <= 1 ? 96 : r === 2 ? 48 : r <= 4 ? 24 : 12 }); }
-      for (const [k, t] of tiles) if (!wantT.has(k)) { t.mesh.visible = false; spare.push(t); tiles.delete(k); }
-      tileJobs = [];
-      for (const [k, w] of wantT) { const t = tiles.get(k); if (force || !t || t.segs !== w.segs) tileJobs.push(w); }
-      tileJobs.sort((a, b) => a.r - b.r);
-    }
-    const t0 = performance.now();
-    while (tileJobs.length) { const w = tileJobs[0]; if (budget != null && w.r > 1 && performance.now() - t0 > budget) break; tileJobs.shift(); placeTile(w); }
-  }
-
-  // ---------------- grass ----------------
-  const GCH = 18, GR = 3, GN = 3400, gchunks = new Map(), gspare = [];
-  let grassMat, bladeBase, gKey = '', gJobs = [];
-  function makeBlade() {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.38, 0.35, 0, 0.38, 0.35, 0, -0.22, 0.7, 0, 0.22, 0.7, 0, 0, 1, 0], 3));
-    g.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4, 4, 5, 6]); return g;
-  }
-  function newChunk() {
-    const g = new THREE.InstancedBufferGeometry(); g.index = bladeBase.index; g.setAttribute('position', bladeBase.attributes.position);
-    g.setAttribute('iPos', new THREE.InstancedBufferAttribute(new Float32Array(GN * 3), 3)); g.setAttribute('iRH', new THREE.InstancedBufferAttribute(new Float32Array(GN * 2), 2)); g.setAttribute('iWV', new THREE.InstancedBufferAttribute(new Float32Array(GN * 2), 2));
-    g.instanceCount = 0; const m = new THREE.Mesh(g, grassMat); m.frustumCulled = false; scene.add(m); return { g, m };
-  }
-  function fillChunk(c) {
-    const P = c.g.attributes.iPos.array, RH = c.g.attributes.iRH.array, WV = c.g.attributes.iWV.array, x0 = c.ix * GCH, z0 = c.iz * GCH;
-    let s = (Math.imul(c.ix, 73856093) ^ Math.imul(c.iz, 19349663)) >>> 0 || 1; const r = () => { s = Math.imul(s ^ (s >>> 15), 2246822519) + 0x9e3779b9 >>> 0; s ^= s >>> 13; return (s >>> 0) / 4294967296; };
-    let k = 0; const dens = SC.grass, cnt = c.r <= 1 ? GN : 1150; c.dense = c.r <= 1;
-    for (let i = 0; i < cnt; i++) {
-      const x = x0 + r() * GCH, z = z0 + r() * GCH, pick1 = r(), rot = r() * 6.283, hv = r(), wv = r();
-      if (pick1 > dens) continue;
-      const h = heightAt(x, z); if (h < SC.water + 0.35 || h > SC.snow - 35) continue;
-      const hx = heightAt(x + 0.8, z), hz = heightAt(x, z + 0.8); if (Math.hypot(hx - h, hz - h) / 0.8 > 0.85) continue;
-      const patch = vn(x * 0.06 + 3.3, z * 0.06 - 1.7), tall = (0.35 + 0.95 * patch * patch) * (0.7 + hv * 0.6) * SC.grassH * 1.1;
-      if (patch < 0.18 && r() < 0.6) continue;
-      P[k * 3] = x; P[k * 3 + 1] = h - 0.05; P[k * 3 + 2] = z; RH[k * 2] = rot; RH[k * 2 + 1] = tall; WV[k * 2] = 0.07 + wv * 0.07; WV[k * 2 + 1] = wv; k++;
-    }
-    c.g.instanceCount = k; for (const a of ['iPos', 'iRH', 'iWV']) c.g.attributes[a].needsUpdate = true; c.m.visible = k > 0;
-  }
-  function updateGrass(x, z, budget, force) {
-    const cix = Math.floor(x / GCH), ciz = Math.floor(z / GCH), key = cix + ',' + ciz;
-    if (key !== gKey || force) {
-      gKey = key; const wantC = new Map();
-      for (let oz = -GR; oz <= GR; oz++) for (let ox = -GR; ox <= GR; ox++) wantC.set((cix + ox) + ',' + (ciz + oz), { ix: cix + ox, iz: ciz + oz, r: Math.max(Math.abs(ox), Math.abs(oz)) });
-      for (const [k, c] of gchunks) if (!wantC.has(k)) { c.m.visible = false; gspare.push(c); gchunks.delete(k); }
-      gJobs = []; for (const [k, w] of wantC) { const c = gchunks.get(k); if (force || !c || c.dense !== (w.r <= 1)) gJobs.push(w); }
-      gJobs.sort((a, b) => a.r - b.r);
-    }
-    const t0 = performance.now();
-    while (gJobs.length) { const w = gJobs[0]; if (budget != null && w.r > 1 && performance.now() - t0 > budget) break; gJobs.shift();
-      const key2 = w.ix + ',' + w.iz; let c = gchunks.get(key2); if (!c) { c = gspare.pop() || newChunk(); gchunks.set(key2, c); } c.ix = w.ix; c.iz = w.iz; c.r = w.r; fillChunk(c); }
-  }
-
-  // ---------------- prop geometry (vertex colors in linear space) ----------------
-  function Bld() { return { p: [], n: [], c: [], e: [] }; }
-  function add(b, geo, m, color, emis = 0) {
-    const g = geo.index ? geo.toNonIndexed() : geo.clone(); geo.dispose(); if (m) g.applyMatrix4(m);
-    const P = g.attributes.position.array, N = g.attributes.normal.array;
-    for (let i = 0; i < P.length; i += 3) { b.p.push(P[i], P[i + 1], P[i + 2]); b.n.push(N[i], N[i + 1], N[i + 2]);
-      const c = typeof color === 'function' ? color(P[i], P[i + 1], P[i + 2], N[i], N[i + 1], N[i + 2]) : color; b.c.push(c.r, c.g, c.b);
-      b.e.push(typeof emis === 'function' ? emis(P[i], P[i + 1], P[i + 2]) : emis); }
-    g.dispose();
-  }
-  function build(b) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3)); g.setAttribute('vcol', new THREE.Float32BufferAttribute(b.c, 3)); g.setAttribute('emis', new THREE.Float32BufferAttribute(b.e, 1)); g.computeBoundingSphere(); return g; }
-  const lumpy = (det, amt, k) => { const g = new THREE.IcosahedronGeometry(1, det), P = g.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), f = 1 + amt * (Math.sin(x * 4.1 + k) * Math.sin(y * 3.7 + k * 2) * Math.sin(z * 4.4 - k) + 0.5 * Math.sin(x * 9 + z * 7 + k)); P.setXYZ(i, x * f, y * f, z * f); } g.computeVertexNormals(); return g; };
-
-  function makeBroadleaf(leaves, k, lod) {
-    const b = Bld(), tr = LC('#4a3a2c'), lc = LC(pick(leaves)), h = R(4.5, 7.5);
-    add(b, new THREE.CylinderGeometry(0.16, 0.32, h, lod ? 5 : 7), Mx(0, h / 2, 0), tr);
-    if (!lod) for (let i = 0; i < 3; i++) { const a = i * 2.1 + k; add(b, new THREE.CylinderGeometry(0.06, 0.12, 2.2, 5), Mx(Math.cos(a) * 0.6, h - 0.6, Math.sin(a) * 0.6, 1, 1, 1, Math.sin(a) * 0.8, 0, -Math.cos(a) * 0.8), tr); }
-    const n = lod ? 2 : 6 + Math.floor(rnd() * 3);
-    for (let i = 0; i < n; i++) { const a = rnd() * 6.28, rr = lod ? 0.3 : R(0.6, 1.9), s = lod ? 3 : R(1.5, 2.4), y = h + R(-0.6, 1.8);
-      add(b, lod ? new THREE.IcosahedronGeometry(1, 0) : lumpy(1, 0.12, k + i), Mx(Math.cos(a) * rr, y, Math.sin(a) * rr, s, s * 0.85, s), (x, yy, z, nx, ny) => sc.copy(lc).multiplyScalar(0.55 + 0.45 * clamp((yy - h + 2.4) / 4.5, 0, 1) + 0.12 * ny), 1); }
-    return build(b);
-  }
-  function makeConifer(needles, k, lod) {
-    const b = Bld(), tr = LC('#3e3026'), lc = LC(pick(needles)), h = R(8, 13), tiers = lod ? 2 : 6;
-    add(b, new THREE.CylinderGeometry(0.12, 0.28, h * 0.4, 5), Mx(0, h * 0.2, 0), tr);
-    for (let i = 0; i < tiers; i++) { const t = i / (tiers - 1 || 1), r = mix(2.4, 0.5, t) * R(0.9, 1.1), y = mix(h * 0.18, h * 0.86, t), hh = mix(3.2, 2.0, t) * (lod ? 1.8 : 1);
-      const g = new THREE.ConeGeometry(r, hh, lod ? 5 : 8, 1); if (!lod) { const P = g.attributes.position; for (let j = 0; j < P.count; j++) { if (P.getY(j) < 0) { const f = 1 + 0.18 * Math.sin(j * 2.7 + k); P.setX(j, P.getX(j) * f); P.setZ(j, P.getZ(j) * f); P.setY(j, P.getY(j) - 0.25 * Math.abs(Math.sin(j * 1.3 + k))); } } g.computeVertexNormals(); }
-      add(b, g, Mx(0, y + hh / 2, 0, 1, 1, 1, 0, R(0, 6), 0), (x, yy, z, nx, ny) => sc.copy(lc).multiplyScalar(0.6 + 0.4 * t + 0.15 * ny), 1); }
-    return build(b);
-  }
-  function makeRock(col, k) { const b = Bld(), c = LC(col); add(b, lumpy(2, 0.22, k), Mx(0, 0.3, 0, 1, 0.65, 0.9), (x, y, z, nx, ny) => sc.copy(c).multiplyScalar(0.8 + 0.25 * Math.sin(x * 6 + y * 9)).lerp(LC(SC.grassA), ny > 0.75 ? 0.45 : 0)); return build(b); }
-  function makeRuin(k) {
-    const b = Bld(), st = LC('#8e877a'), st2 = LC('#6f6a62'), moss = LC('#55703a'), sCol = (x, y, z, nx, ny) => sc.copy(Math.sin(x * 3 + y * 5 + z * 2 + k) > 0.3 ? st : st2).lerp(moss, ny > 0.6 ? 0.55 : 0.08);
-    const kind = k % 3;
-    if (kind === 0) { // arch
-      for (const s of [-1, 1]) { add(b, new THREE.BoxGeometry(1.6, 9, 1.6, 1, 6, 1), Mx(s * 3.6, 4.5, 0), sCol); add(b, new THREE.BoxGeometry(2.0, 0.6, 2.0), Mx(s * 3.6, 0.3, 0), sCol); }
-      const arc = new THREE.TorusGeometry(3.6, 0.8, 6, 14, Math.PI); add(b, arc, Mx(0, 9, 0, 1, 1, 1.9), sCol);
-      add(b, new THREE.BoxGeometry(1.4, 1.1, 1.3), Mx(5.2, 0.5, 2.4, 1, 1, 1, 0.2, 0.6, 0.3), sCol);
-    } else if (kind === 1) { // colonnade
-      for (let i = 0; i < 5; i++) { const h = i === 2 ? 2.5 : i === 4 ? 4 : R(6, 9); add(b, new THREE.CylinderGeometry(0.7, 0.8, h, 10), Mx(i * 3.4 - 6.8, h / 2, 0), sCol); if (h > 5) add(b, new THREE.BoxGeometry(1.9, 0.5, 1.9), Mx(i * 3.4 - 6.8, h + 0.25, 0), sCol); }
-      add(b, new THREE.BoxGeometry(17, 0.6, 3.2), Mx(0, 0.3, 0), sCol);
-      add(b, new THREE.CylinderGeometry(0.7, 0.7, 5, 10), Mx(1.5, 0.7, 3.2, 1, 1, 1, 0, 0.4, Math.PI / 2), sCol);
-    } else { // watchtower stump
-      add(b, new THREE.CylinderGeometry(3.2, 3.8, 11, 12, 4, true), Mx(0, 5.5, 0), sCol);
-      add(b, new THREE.CylinderGeometry(3.9, 4.2, 1.2, 12), Mx(0, 0.6, 0), sCol);
-      for (let i = 0; i < 5; i++) { const a = i * 1.26; add(b, new THREE.BoxGeometry(1.4, R(0.8, 2.2), 1.0), Mx(Math.cos(a) * 3.4, 11.4, Math.sin(a) * 3.4, 1, 1, 1, 0, -a, 0), sCol); }
-      add(b, new THREE.BoxGeometry(1.2, 2.4, 1.4), Mx(0, 6.5, 3.5), sc.set(0.02, 0.02, 0.025));
-    }
-    return build(b);
-  }
-  function makeIsland(k) {
-    const b = Bld(), g = new THREE.SphereGeometry(1, 28, 18), P = g.attributes.position;
-    for (let i = 0; i < P.count; i++) { let x = P.getX(i), y = P.getY(i), z = P.getZ(i); const a = Math.atan2(z, x), wob = 1 + 0.15 * Math.sin(a * 3 + k) + 0.07 * Math.sin(a * 8 - k);
-      if (y >= 0) { x *= wob; z *= wob; y = y * 0.12; } else { const t = -y, nar = wob * (1 - 0.7 * Math.pow(t, 1.1)) * (1 + 0.1 * Math.sin(t * 13 + a * 4)); x *= nar; z *= nar; y = -t * (1.3 + 0.4 * Math.sin(a * 2 + k)); }
-      P.setXYZ(i, x, y, z); }
-    g.computeVertexNormals();
-    const gr = LC(SC.grassA), rk = LC('#7a7064'), rk2 = LC('#5a524c');
-    add(b, g, null, (x, y, z, nx, ny) => y > -0.02 && ny > 0.3 ? sc.copy(gr).multiplyScalar(0.9 + 0.2 * Math.sin(x * 9 + z * 7)) : sc.copy(rk).lerp(rk2, 0.5 + 0.5 * Math.sin(y * 14 + x * 3)));
-    for (let i = 0; i < 9; i++) { const a = rnd() * 6.28, r = Math.sqrt(rnd()) * 0.7, s = R(0.05, 0.09); add(b, new THREE.ConeGeometry(s, s * 4, 6), Mx(Math.cos(a) * r, 0.1 + s * 2, Math.sin(a) * r), LC(pick(SC.needle))); }
-    add(b, new THREE.CylinderGeometry(0.03, 0.035, 0.4, 8), Mx(0.2, 0.3, -0.1), LC('#9a9288'));
-    return build(b);
-  }
-  function makeBird() { const b = Bld(), c = LC('#1c1c22'), g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, -0.25, 1, 0.05, 0.15, 0, 0, 0.25, 0, 0, -0.25, 0, 0, 0.25, -1, 0.05, 0.15], 3)); g.computeVertexNormals(); add(b, g, null, c); add(b, new THREE.IcosahedronGeometry(1, 1), Mx(0, 0, 0, 0.09, 0.08, 0.3), c); return build(b); }
-
-  const PROP_VERT = `attribute vec3 vcol; attribute float emis; uniform float sway, flap;
-    varying vec3 vC, vN, vW; varying float vLeaf;
-    void main(){ vec3 pos = position; vec3 org = (modelMatrix * instanceMatrix * vec4(0.0,0.0,0.0,1.0)).xyz; float ph = org.x*0.137 + org.z*0.071;
-      pos.y += sin(time*9.0 + ph*7.0) * abs(pos.x) * flap;
-      vec4 w = modelMatrix * instanceMatrix * vec4(pos, 1.0);
-      float bend = sway * max(position.y - 1.0, 0.0) * 0.04; w.xz += windDir * bend * (0.6 + 0.4*sin(time*1.3 + ph*3.0) + windAmp);
-      vN = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal); vC = vcol; vLeaf = emis; vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
-  const PROP_FRAG = `varying vec3 vC, vN, vW; varying float vLeaf;
-    void main(){ vec3 n = normalize(vN); vec3 toC = cameraPosition - vW; float dist = length(toC); vec3 v = toC / dist; if (dot(n, v) < 0.0 && vLeaf < 0.5) n = -n;
-      float ndl = dot(n, sunDir); float diff = clamp((ndl + 0.25) / 1.25, 0.0, 1.0); diff *= diff;
-      vec3 amb = mix(ambGnd, ambSky, n.y*0.5 + 0.5);
-      float trans = vLeaf * pow(max(dot(-v, sunDir), 0.0), 3.0) * 0.6;
-      vec3 c = vC * (amb + sunCol * (diff + trans) * cloudShade(vW));
-      c = fogApply(c, vW, dist, -v); gl_FragColor = vec4(finish(c), 1.0); }`;
-  function propMat(o = {}) { return new THREE.ShaderMaterial({ vertexShader: GL_COMMON + PROP_VERT, fragmentShader: GL_COMMON + PROP_FRAG, side: o.double ? THREE.DoubleSide : THREE.FrontSide, uniforms: Object.assign({}, PU, { sway: { value: o.sway || 0 }, flap: { value: o.flap || 0 } }) }); }
-
-  function Pool(geo, mat, n, grp) {
-    const m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; for (let i = 0; i < n; i++) m.setMatrixAt(i, ZERO); grp.add(m); let k = 0;
-    return { m, n, put(p, q, s) { const i = k; k = (k + 1) % n; tm.compose(p, q, typeof s === 'number' ? ts.set(s, s, s) : s); m.setMatrixAt(i, tm); m.instanceMatrix.needsUpdate = true; return i; },
-      clear() { for (let i = 0; i < n; i++) m.setMatrixAt(i, ZERO); m.instanceMatrix.needsUpdate = true; k = 0; } };
-  }
-  function Movers(geo, mat, n, grp, o = {}) {
-    const m = new THREE.InstancedMesh(geo, mat, n); m.frustumCulled = false; const S = [];
-    for (let i = 0; i < n; i++) { m.setMatrixAt(i, ZERO); S.push({ on: false, p: V(), v: V(), age: 0, life: 1, s: 1, yaw: 0, ph: rnd() * 6.28 }); }
-    grp.add(m); let k = 0;
-    return { m, spawn(p, v, life, s) { const q = S[k]; k = (k + 1) % n; q.on = true; q.p.copy(p); q.v.copy(v); q.age = 0; q.life = life; q.s = s; q.yaw = Math.atan2(-v.x, -v.z); return q; },
-      update(dt, t) { for (let i = 0; i < n; i++) { const q = S[i]; if (!q.on) continue; q.age += dt; if (q.age > q.life) { q.on = false; m.setMatrixAt(i, ZERO); continue; }
-          q.p.addScaledVector(q.v, dt); q.p.y += Math.sin(t * 0.9 + q.ph) * 0.4 * dt; const f = Math.min(1, q.age / 1.5) * Math.min(1, (q.life - q.age) / 2), s = q.s * f;
-          tq.setFromEuler(te.set(0, q.yaw, Math.sin(t * 0.7 + q.ph) * 0.15)); tm.compose(q.p, tq, ts.set(s, s, s)); m.setMatrixAt(i, tm); }
-        m.instanceMatrix.needsUpdate = true; },
-      clear() { for (const q of S) q.on = false; for (let i = 0; i < n; i++) m.setMatrixAt(i, ZERO); m.instanceMatrix.needsUpdate = true; } };
-  }
-
-  // ---------------- scene content along the journey ----------------
-  let props = null;
-  function buildProps() {
-    if (props) { scene.remove(props.grp); props.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-    const grp = new THREE.Group(), lay = []; seed = 101 + SC_ORDER.indexOf(cur) * 37;
-    const P = { grp, lay, movers: [] };
-    const L = (gap, fn) => lay.push({ gap, fn, next: W.d - 260 });
-    const treeMat = propMat({ sway: 1 }), stoneMat = propMat();
-    const nearB = [0, 1, 2].map(i => Pool(makeBroadleaf(SC.leaf, i * 3.1, false), treeMat, 500, grp));
-    const nearC = [0, 1].map(i => Pool(makeConifer(SC.needle, i * 2.3, false), treeMat, 700, grp));
-    const farB = Pool(makeBroadleaf(SC.leaf, 9, true), treeMat, 1300, grp), farC = Pool(makeConifer(SC.needle, 4, true), treeMat, 1500, grp);
-    const forestMask = (x, z) => sstep(-0.15, 0.3, fbm(x * 0.0035 + 5.1, z * 0.0035 - 2.7, 3));
-    const tryTree = (x, z, near) => {
-      const h = heightAt(x, z); if (h < SC.water + 0.8 || h > SC.snow - 25) return;
-      const hx = heightAt(x + 2, z); if (Math.abs(hx - h) > 2.6) return;
-      const fm = forestMask(x, z); if (rnd() > SC.trees * (0.04 + 0.96 * fm * fm)) return;
-      const con = rnd() < SC.conifer + clamp((h - 60) / 160, 0, 0.5), s = R(0.75, 1.3);
-      tq.setFromAxisAngle(UP, R(0, 6.28)); tv.set(x, h - 0.3, z);
-      if (near) pick(con ? nearC : nearB).put(tv, tq, s); else (con ? farC : farB).put(tv, tq, s);
-    };
-    L([0.18, 0.45], D => { const side = rnd() < 0.5 ? -1 : 1, lat = side * R(15, 130), x = pathX(D) + lat; tryTree(x, -D + R(-2, 2), true); });
-    L([0.35, 0.8], D => { const side = rnd() < 0.5 ? -1 : 1, lat = side * R(130, 520), x = pathX(D) + lat; tryTree(x, -D + R(-2, 2), false); });
-    // rocks
-    const rk = [0, 1].map(i => Pool(makeRock(i ? SC.rock : SC.rock2, i * 5), stoneMat, 300, grp));
-    L([3, 8], D => { if (rnd() > SC.rocks) return; const x = pathX(D) + (rnd() < 0.5 ? -1 : 1) * R(8, 120), z = -D, h = heightAt(x, z); if (h < SC.water) return; tq.setFromEuler(te.set(R(-0.2, 0.2), R(0, 6.28), R(-0.2, 0.2))); pick(rk).put(tv.set(x, h - 0.4, z), tq, R(0.8, 3.5)); });
-    // ruins (landmarks; orbit shots love these)
-    const ru = [0, 1, 2].map(i => Pool(makeRuin(i), stoneMat, 14, grp)); P.landmarks = [];
-    L([170, 340], D => { if (rnd() > SC.ruins) return; const side = rnd() < 0.5 ? -1 : 1, x = pathX(D) + side * R(22, 70), z = -D, h = heightAt(x, z); if (h < SC.water + 1) return;
-      const s = R(0.9, 1.4); pick(ru).put(tv.set(x, h - 0.5, z), tq.setFromAxisAngle(UP, R(0, 6.28)), s); P.landmarks.push({ d: D, x, z, y: h + 6 * s }); if (P.landmarks.length > 12) P.landmarks.shift(); });
-    // distant floating isles — the one overtly magical note
-    const isl = [0, 1].map(i => Pool(makeIsland(i * 2.7), stoneMat, 8, grp));
-    L([280, 560], D => { if (rnd() > SC.islands) return; const side = rnd() < 0.5 ? -1 : 1, x = pathX(D) + side * R(320, 900), z = -D, s = R(28, 70); pick(isl).put(tv.set(x, heightAt(x, z) + R(170, 380), z), tq.setFromAxisAngle(UP, R(0, 6.28)), ts.set(s, s, s)); });
-    // birds
-    const birds = Movers(makeBird(), propMat({ flap: 0.5, double: true }), 50, grp); P.movers.push(birds);
-    P.flock = (near) => { const side = rnd() < 0.5 ? -1 : 1, base = V(cam.position.x + side * R(40, 90), cam.position.y + R(8, 30), cam.position.z - R(40, 120)), vel = V(-side * R(6, 9), R(0, 1.2), R(-4, 1)), n = 5 + Math.floor(rnd() * 8);
-      for (let k = 0; k < n; k++) { const row = Math.ceil(k / 2), s = k % 2 ? 1 : -1; birds.spawn(V(base.x + side * row * 1.6, base.y + R(-0.5, 0.5), base.z + s * row * 1.5), vel, 24, R(0.9, 1.3)); } };
-    scene.add(grp); props = P;
-    for (const l of lay) { l.next = W.d - 260; while (l.next < W.d + 760) { l.fn(l.next); l.next += R(l.gap[0], l.gap[1]); } }
-  }
-
-  // ---------------- wind streaks (melody) ----------------
-  const NS = 18, SP = 26; let streakMesh, streaks = [];
-  function makeStreaks() {
-    const g = new THREE.BufferGeometry(), pos = new Float32Array(NS * SP * 2 * 3), al = new Float32Array(NS * SP * 2), idx = [];
-    for (let s = 0; s < NS; s++) for (let i = 0; i < SP - 1; i++) { const a = (s * SP + i) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('al', new THREE.BufferAttribute(al, 1)); g.setIndex(idx);
-    streakMesh = new THREE.Mesh(g, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { col: { value: new THREE.Color(1, 1, 1) } },
-      vertexShader: `attribute float al; varying float vA; void main(){ vA = al; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 col; varying float vA; void main(){ gl_FragColor = vec4(col * vA, 1.0); }` }));
-    streakMesh.frustumCulled = false; scene.add(streakMesh);
-    for (let s = 0; s < NS; s++) streaks.push({ on: false, pts: [], p: V(), v: V(), age: 0, life: 3, spin: 0, w: 0.05, acc: 0 });
-  }
-  let streakK = 0;
-  function spawnStreak(pitch) {
-    const s = streaks[streakK]; streakK = (streakK + 1) % NS;
-    cam.getWorldDirection(tv); const right = tv2.crossVectors(tv, UP).normalize(), dist = R(9, 26);
-    s.p.copy(cam.position).addScaledVector(tv, dist).addScaledVector(right, R(-0.6, 0.6) * dist * 0.7); s.p.y += (pitch - 0.5) * dist * 0.5 + R(-1, 2);
-    const wd = PU.windDir.value; s.v.set(wd.x, 0, wd.y).multiplyScalar(R(5, 9)).addScaledVector(right, R(-3, 3)); s.v.y = R(-0.5, 1);
-    s.on = true; s.age = 0; s.life = R(2.2, 3.6); s.spin = (rnd() < 0.5 ? -1 : 1) * R(1.2, 3.2) * (rnd() < 0.55 ? 1 : 0.15); s.w = R(0.035, 0.07); s.pts.length = 0; s.acc = 0; s.ph = rnd() * 6;
-  }
-  function updateStreaks(dt) {
-    const g = streakMesh.geometry, P = g.attributes.position.array, A = g.attributes.al.array; cam.getWorldDirection(tv);
-    for (let k = 0; k < NS; k++) {
-      const s = streaks[k], base = k * SP * 2;
-      if (s.on) { s.age += dt; if (s.age > s.life + 1.2) s.on = false; }
-      if (!s.on) { for (let i = 0; i < SP * 2; i++) A[base + i] = 0; continue; }
-      if (s.age < s.life) {
-        const a = s.spin * dt * (0.5 + 0.5 * Math.sin(s.age * 2 + s.ph)); const c = Math.cos(a), sn = Math.sin(a), vx = s.v.x * c - s.v.z * sn, vz = s.v.x * sn + s.v.z * c; s.v.x = vx; s.v.z = vz;
-        s.v.y += Math.cos(s.age * 2.4 + s.ph) * dt * 2.2 * Math.abs(s.spin) * 0.4; s.p.addScaledVector(s.v, dt);
-        s.acc += dt; if (s.acc > 0.035 || !s.pts.length) { s.acc = 0; s.pts.unshift(s.p.clone()); if (s.pts.length > SP) s.pts.pop(); }
-      } else if (s.pts.length > 1) { s.acc += dt; if (s.acc > 0.035) { s.acc = 0; s.pts.pop(); } }
-      const n = s.pts.length, life = Math.min(1, s.age / 0.4);
-      for (let i = 0; i < SP; i++) {
-        const p = s.pts[Math.min(i, n - 1)] || s.p, q = s.pts[Math.min(i + 1, n - 1)] || p;
-        tv2.subVectors(p, q); if (tv2.lengthSq() < 1e-6) tv2.set(1, 0, 0); const side = tv2.cross(tv).normalize(), t = i / (SP - 1), w = s.w * Math.sin(Math.PI * Math.min(1, t * 1.15)) * (0.4 + 0.6 * (1 - t));
-        const o = (base + i * 2) * 3; P[o] = p.x + side.x * w; P[o + 1] = p.y + side.y * w; P[o + 2] = p.z + side.z * w; P[o + 3] = p.x - side.x * w; P[o + 4] = p.y - side.y * w; P[o + 5] = p.z - side.z * w;
-        const al = i < n ? (1 - t) * life * 0.9 : 0; A[base + i * 2] = al; A[base + i * 2 + 1] = al;
-      }
-    }
-    g.attributes.position.needsUpdate = true; g.attributes.al.needsUpdate = true;
-  }
-
-  // ---------------- init ----------------
-  let sky, water, motes;
-  function init(cv) {
-    canvas = cv;
-    Rr = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-    pr = Math.min(1.25, window.devicePixelRatio || 1); Rr.setPixelRatio(pr);
-    scene = new THREE.Scene(); cam = new THREE.PerspectiveCamera(55, 1, 0.6, 4200);
-    sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 48, 24), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, uniforms: PU,
-      vertexShader: `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: GL_COMMON + GL_SKY + `varying vec3 vDir;
-        float h3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-        void main(){ vec3 rd = normalize(vDir); vec3 c = skyBase(rd); float s = dot(rd, sunDir);
-          if (moon < 0.5) c += sunCol * smoothstep(0.99953, 0.99975, s) * sunDisc;
-          if (stars > 0.0 && rd.y > 0.0) { vec3 q = rd * 300.0; vec3 cl = floor(q); float r = h3(cl); float st = step(0.986, r) * smoothstep(0.35, 0.0, length(fract(q) - 0.5)) * (0.55 + 0.45*sin(time*(0.7 + r*2.0) + r*50.0));
-            vec3 q2 = rd * 110.0; float r2 = h3(floor(q2) + 3.0); float st2 = step(0.994, r2) * smoothstep(0.3, 0.0, length(fract(q2) - 0.5));
-            float mw = smoothstep(0.55, 0.9, gfbm(rd.xz*4.0/(rd.y + 0.6) + 2.0)) * 0.05;
-            c += (vec3(1.0, 0.96, 0.9) * (st*0.6 + st2*1.4) + vec3(0.5, 0.55, 0.8) * mw) * stars * smoothstep(0.0, 0.2, rd.y); }
-          if (moon > 0.5) { vec3 tq = normalize(cross(sunDir, vec3(0.0, 1.0, 0.0))); vec2 uv = vec2(dot(rd, tq), dot(rd, cross(tq, sunDir))) * 70.0;
-            float disc = smoothstep(1.0, 0.96, length(uv)) * step(0.0, s); float cr = gfbm(uv*2.5 + 4.0);
-            c = mix(c, vec3(2.4, 2.35, 2.2) * (0.75 + 0.35*cr), disc); c += vec3(0.5, 0.6, 0.9) * pow(max(s, 0.0), 300.0) * 0.6; }
-          if (rd.y > 0.0) { vec2 uv = rd.xz / (rd.y + 0.1) * 0.9 + windDir * time * cloudSpeed * 0.35; vec2 uv2 = uv + sunDir.xz * 0.05;
-            float n = gfbm(uv*1.3 + gfbm(uv*0.6)*0.9), n2 = gfbm(uv2*1.3 + gfbm(uv2*0.6)*0.9);
-            float dens = smoothstep(1.0 - cover, 1.0 - cover + 0.32, n) * smoothstep(0.0, 0.16, rd.y);
-            float lit = clamp(0.62 + (n - n2) * 5.0, 0.0, 1.0); vec3 cc = mix(cloudDark, cloudLit, lit);
-            cc += sunCol * pow(max(s, 0.0), 10.0) * 0.12 * sunGlow * (1.0 - smoothstep(0.0, 0.6, dens));
-            cc = mix(cc, fogCol, (1.0 - smoothstep(0.0, 0.2, rd.y)) * 0.6); c = mix(c, cc, dens * 0.96); }
-          gl_FragColor = vec4(finish(c), 1.0); }` }));
-    sky.renderOrder = -2; sky.frustumCulled = false; scene.add(sky);
-
-    terrMat = new THREE.ShaderMaterial({ uniforms: PU, side: THREE.DoubleSide,
-      vertexShader: `varying vec3 vW, vN; void main(){ vW = position; vN = normal; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: GL_COMMON + GL_GRASS + `uniform vec3 rockA, rockB, sandC, snowC; uniform float snowLine, waterLevel; varying vec3 vW, vN;
-        void main(){ vec3 n = normalize(vN); float slope = 1.0 - n.y; vec2 q = mod(vW.xz, 4096.0);
-          float n1 = gfbm(q*0.09), n2 = gn(q*0.5);
-          vec3 g = grassCol(vW.xz) * 0.72;
-          vec3 rk = mix(rockA, rockB, smoothstep(0.3, 0.7, gfbm(q*0.025 + vec2(vW.y*0.012))));
-          rk *= 0.85 + 0.3*n2;
-          vec3 c = mix(g, rk, smoothstep(0.28, 0.5, slope + (n1 - 0.5)*0.25));
-          float wet = 1.0 - smoothstep(waterLevel - 0.2, waterLevel + 0.5, vW.y); c = mix(c, sandC, 1.0 - smoothstep(waterLevel + 0.3, waterLevel + 1.1 + n1*0.8, vW.y)); c *= 1.0 - wet*0.45;
-          float sn = smoothstep(snowLine - 25.0, snowLine + 5.0, vW.y + (n1 - 0.5)*40.0) * (1.0 - smoothstep(0.5, 0.72, slope));
-          c = mix(c, snowC, sn);
-          float diff = clamp((dot(n, sunDir) + 0.15) / 1.15, 0.0, 1.0);
-          vec3 amb = mix(ambGnd, ambSky, n.y*0.5 + 0.5) * (0.75 + 0.25*n1);
-          vec3 lit = c * (amb + sunCol * diff * cloudShade(vW)) + sunCol * sn * pow(max(dot(reflect(normalize(vW - cameraPosition), n), sunDir), 0.0), 20.0) * 0.15;
-          vec3 toC = cameraPosition - vW; float dist = length(toC);
-          gl_FragColor = vec4(finish(fogApply(lit, vW, dist, -toC/dist)), 1.0); }` });
-
-    water = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000, 1, 1).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ uniforms: PU, transparent: false,
-      vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-      fragmentShader: GL_COMMON + GL_SKY + `uniform vec3 waterDeep, waterShal; uniform float glint; varying vec3 vW;
-        void main(){ vec2 p = mod(vW.xz, 4096.0); float t = time; vec2 g = vec2(0.0);
-          g += vec2(0.09, 0.03) * cos(dot(p, vec2(0.09, 0.03)) + t*0.9) * 0.5;
-          g += vec2(-0.05, 0.11) * cos(dot(p, vec2(-0.05, 0.11)) + t*1.1) * 0.45;
-          g += vec2(0.23, -0.17) * cos(dot(p, vec2(0.23, -0.17)) + t*1.6) * 0.2;
-          g += vec2(-0.37, -0.29) * cos(dot(p, vec2(-0.37, -0.29)) + t*2.2) * 0.1;
-          g += (vec2(gn(p*0.6 + t*0.3), gn(p*0.6 - t*0.25 + 9.0)) - 0.5) * 0.12;
-          vec3 toC = cameraPosition - vW; float dist = length(toC); vec3 v = toC/dist;
-          g *= 1.0 / (1.0 + dist*0.004);
-          vec3 n = normalize(vec3(-g.x, 1.0, -g.y)); vec3 r = reflect(-v, n); r.y = abs(r.y);
-          vec3 refl = skyBase(r); refl = mix(refl, fogCol*0.5 + ambGnd*0.6, smoothstep(0.14, 0.0, r.y)*0.7);
-          float fr = 0.02 + 0.98*pow(1.0 - max(dot(v, n), 0.0), 5.0);
-          vec3 body = mix(waterDeep, waterShal, 0.3) * (ambSky*0.7 + sunCol*0.12);
-          vec3 c = mix(body, refl, fr);
-          float spec = pow(max(dot(r, sunDir), 0.0), 500.0); c += sunCol * spec * (5.0 + glint*6.0) * cloudShade(vW);
-          c = fogApply(c, vW, dist, -v); gl_FragColor = vec4(finish(c), 1.0); }` }));
-    water.frustumCulled = false; scene.add(water);
-
-    bladeBase = makeBlade();
-    grassMat = new THREE.ShaderMaterial({ uniforms: PU, side: THREE.DoubleSide,
-      vertexShader: GL_COMMON + GL_GRASS + `attribute vec3 iPos; attribute vec2 iRH, iWV; uniform vec4 gust[4]; uniform float fadeR; uniform vec2 camXZ;
-        varying vec3 vW, vCol; varying float vT;
-        void main(){ float t = position.y, h = iRH.y; float dc = length(iPos.xz - camXZ); float fade = 1.0 - smoothstep(fadeR*0.55, fadeR, dc);
-          vec3 p = vec3(position.x * iWV.x * (0.4 + 0.6*fade), t * h * fade, 0.0); float c = cos(iRH.x), s = sin(iRH.x); p = vec3(p.x*c, p.y, p.x*s);
-          float ph = dot(iPos.xz, windDir) * 0.11 - time * 2.0;
-          float w = windAmp * (0.55 + 0.45*sin(ph) + 0.3*sin(ph*2.7 + iPos.x*0.35)) + 0.08*sin(time*3.1 + iPos.z*1.7);
-          float gs = 0.0; for (int i = 0; i < 4; i++){ float age = time - gust[i].z; if (age > 0.0 && age < 5.0) { float dd = length(iPos.xz - gust[i].xy) - age * 24.0; gs += gust[i].w * exp(-dd*dd/40.0) * (1.0 - age/5.0); } }
-          float bend = t*t*(w + gs*1.4); p.xz += windDir * bend * h * 0.75; p.y *= 1.0 - 0.3*min(1.0, (w + gs)*0.8)*t;
-          vec3 wp = iPos + p; vW = wp; vT = t; vCol = grassCol(iPos.xz) * (0.8 + 0.4*iWV.y);
-          gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0); }`,
-      fragmentShader: GL_COMMON + `varying vec3 vW, vCol; varying float vT;
-        void main(){ vec3 toC = cameraPosition - vW; float dist = length(toC); vec3 v = toC/dist;
-          vec3 base = vCol * mix(0.45, 1.15, vT); base = mix(base, base*vec3(1.15, 1.1, 0.75), vT*vT*0.5);
-          float trans = pow(max(dot(-v, sunDir), 0.0), 4.0) * vT;
-          vec3 c = base * (mix(ambGnd, ambSky, 0.6 + 0.4*vT) + sunCol * (0.55 + 0.35*vT + trans*0.9) * cloudShade(vW));
-          gl_FragColor = vec4(finish(fogApply(c, vW, dist, -v)), 1.0); }` });
-
-    { const n = 600, pos = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) pos[i] = Math.random();
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      motes = new THREE.Points(g, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-        uniforms: { camPos: { value: V() }, box: { value: V(70, 30, 90) }, amt: { value: 0.4 }, hit: { value: 0 }, col: { value: new THREE.Color() }, scale: { value: 500 }, time: PU.time, blink: { value: 0 }, size: { value: 0.12 } },
-        vertexShader: `uniform vec3 camPos, box; uniform float hit, scale, time, blink, size; varying float vA;
-          void main(){ vec3 p = position * box; float ph = position.x*91.0 + position.z*37.0;
-            p += vec3(sin(time*0.3 + ph), sin(time*0.4 + ph*1.3)*0.6 + time*0.2*(0.3 + position.y), cos(time*0.27 + ph)) * 2.0;
-            vec3 w = mod(p - camPos, box) - box*0.5 + camPos; vec4 mv = viewMatrix * vec4(w, 1.0); float dist = -mv.z;
-            float bl = mix(1.0, smoothstep(0.6, 1.0, sin(time*1.4 + ph*5.0)), blink);
-            vA = smoothstep(box.z*0.5, 8.0, dist) * smoothstep(0.8, 4.0, dist) * (bl + hit*0.4);
-            gl_PointSize = clamp(size * (1.0 + hit*0.5) * scale / max(dist, 1.0), 0.0, 20.0); gl_Position = projectionMatrix * mv; }`,
-        fragmentShader: `uniform float amt; uniform vec3 col; varying float vA; void main(){ float r = length(gl_PointCoord - 0.5); float a = pow(smoothstep(0.5, 0.0, r), 2.0); gl_FragColor = vec4(col * a * vA * amt, 1.0); }` }));
-      motes.frustumCulled = false; scene.add(motes); }
-    makeStreaks();
-
-    composer = new THREE.EffectComposer(Rr);
-    composer.addPass(new THREE.RenderPass(scene, cam));
-    rays = new THREE.ShaderPass({ uniforms: { tDiffuse: { value: null }, sunUV: { value: new THREE.Vector2(0.5, 0.5) }, amt: { value: 0 }, col: { value: new THREE.Color(1, 0.9, 0.7) } },
-      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 sunUV; uniform float amt; uniform vec3 col; varying vec2 vUv;
-        void main(){ vec3 base = texture2D(tDiffuse, vUv).rgb; if (amt < 0.001) { gl_FragColor = vec4(base, 1.0); return; }
-          vec2 d = (sunUV - vUv) / 36.0; vec2 uv = vUv; float il = 0.0, dec = 1.0;
-          for (int i = 0; i < 36; i++){ uv += d; vec3 s = texture2D(tDiffuse, clamp(uv, 0.001, 0.999)).rgb; il += max(dot(s, vec3(0.3, 0.59, 0.11)) - 0.68, 0.0) * dec; dec *= 0.96; }
-          gl_FragColor = vec4(base + col * il * amt * 0.09, 1.0); }` });
-    composer.addPass(rays);
-    bloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 0.22, 0.5, 0.9); composer.addPass(bloom);
-    post = new THREE.ShaderPass({ uniforms: { tDiffuse: { value: null }, time: { value: 0 }, fade: { value: 1 }, grain: { value: 0.022 }, bar: { value: 0.06 }, tint: { value: new THREE.Color(1, 1, 1) }, aspect: { value: 1.7 } },
-      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float time, fade, grain, bar; uniform vec3 tint; varying vec2 vUv;
-        void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; float l = dot(c, vec3(0.299, 0.587, 0.114));
-          c = mix(c * vec3(0.94, 0.98, 1.06), c * vec3(1.05, 1.0, 0.92), smoothstep(0.15, 0.75, l)) * tint;
-          c = mix(vec3(l), c, 1.06); c = c + (c*c*(3.0 - 2.0*c) - c) * 0.18;
-          vec2 q = vUv - 0.5; c *= mix(0.68, 1.0, smoothstep(0.85, 0.2, length(q*vec2(1.0, 1.2))));
-          float n = fract(sin(dot(vUv*(time + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * grain;
-          c *= 1.0 - fade; if (abs(vUv.y - 0.5) > 0.5 - bar) c = vec3(0.0);
-          gl_FragColor = vec4(c, 1.0); }` });
-    composer.addPass(post);
-    resize(); addEventListener('resize', resize);
-    applyTod(wantTod === 'auto' ? clockTod() : wantTod); applyScene(cur, true);
-  }
-  function resize() {
-    if (!Rr) return; const w = innerWidth, h = innerHeight;
-    Rr.setPixelRatio(pr); Rr.setSize(w, h, false); composer.setPixelRatio && composer.setPixelRatio(pr); composer.setSize(w, h);
-    bloom.setSize(w * pr / 2, h * pr / 2); cam.aspect = w / h; cam.updateProjectionMatrix();
-    // letterbox to ~2.1:1 on wide screens, off on tall/phone screens
-    post.uniforms.bar.value = W.letterbox && w / h > 1.3 ? Math.max(0, (1 - (w / h) / 2.1) / 2) : 0;
-  }
-  function perf(dt) { frames++; dtAvg += (dt * 1000 - dtAvg) * 0.05; if (frames > 90 && dtAvg > 30 && pr > 0.55) { slowT += dt; if (slowT > 2) { pr = Math.max(0.55, pr - 0.15); resize(); slowT = 0; frames = 0; } } else slowT = 0; }
-
-  // ---------------- palette application ----------------
-  function applyTod(k) {
-    curTod = k; TD = TOD[k]; const el = TD.el * Math.PI / 180, az = TD.az * Math.PI / 180;
-    PU.sunDir.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)).normalize();
-    PU.stars.value = TD.stars; PU.moon.value = TD.moon; PU.sunDisc.value = TD.disc; PU.sunGlow.value = TD.glow; PU.cover.value = TD.cover; PU.exposure.value = TD.exp; PU.fogDen.value = TD.fogD;
-    PU.cloudShadow.value = k === 'night' ? 0.15 : k === 'dusk' ? 0.1 : 0.4;
-    motes.material.uniforms.col.value.copy(LC(TD.motes)); motes.material.uniforms.blink.value = k === 'night' || k === 'dusk' ? 1 : 0;
-    motes.material.uniforms.size.value = k === 'night' ? 0.22 : 0.1; motes.material.uniforms.amt.value = k === 'night' ? 1.2 : 0.35;
-    tintPalette();
-  }
-  function tintPalette() {
-    const sh = (hex, out, mul = 1) => { out.copy(LC(hex)); if (W.hue) out.offsetHSL(W.hue, 0, 0); return out.multiplyScalar(mul); };
-    sh(TD.sun, PU.sunCol.value, TD.si * (1 + W.chordFlash * 0.12)); sh(TD.zen, PU.skyZen.value); sh(TD.hor, PU.skyHor.value); sh(TD.fog, PU.fogCol.value); sh(TD.fogS, PU.fogSun.value);
-    sh(TD.aSky, PU.ambSky.value, TD.aI); sh(TD.aGnd, PU.ambGnd.value, TD.aI); sh(TD.cl, PU.cloudLit.value, 1.2); sh(TD.cd, PU.cloudDark.value);
-  }
-  function applyScene(k, now) {
-    cur = k; SC = SCN[k];
-    PU.grassA.value.copy(LC(SC.grassA)); PU.grassB.value.copy(LC(SC.grassB)); PU.grassDry.value.copy(LC(SC.dryC)); PU.dryAmt.value = SC.dry;
-    PU.rockA.value.copy(LC(SC.rock)); PU.rockB.value.copy(LC(SC.rock2)); PU.sandC.value.copy(LC(SC.sand)); PU.snowC.value.copy(LC(SC.snowC)); PU.snowLine.value = SC.snow; PU.waterLevel.value = SC.water;
-    PU.waterDeep.value.copy(LC(SC.waterC[0])); PU.waterShal.value.copy(LC(SC.waterC[1]));
-    water.position.y = SC.water;
-    buildProps(); for (const s of streaks) s.on = false;
-    CAM.shot = null; directorStart(true); directorCam(0.016);
-    updateTiles(cam.position.x, cam.position.z, null, true); updateGrass(cam.position.x, cam.position.z, null, true);
-  }
-
-  // ---------------- camera director ----------------
-  const CAM = { shot: null, t: 0, len: 10, o: {}, ys: null, lastShot: '' };
-  const camP = V(), look = V();
-  const onPath = (d, lat, out) => out.set(pathX(d) + lat, 0, -d);
-  function groundMax(x, z, r) { let m = groundAt(x, z); if (r) { m = Math.max(m, groundAt(x + r, z), groundAt(x - r, z), groundAt(x, z + r), groundAt(x, z - r)); } return m; }
-  function pickShot(big) {
-    const lv = W.level; let opts;
-    if (big) opts = ['reveal', 'drone', 'reveal'];
-    else if (lv < 0.32) opts = ['still', 'grass', 'side', 'track', 'orbit', 'still'];
-    else if (lv < 0.6) opts = ['track', 'side', 'orbit', 'drone', 'grass', 'still'];
-    else opts = ['drone', 'track', 'reveal', 'side', 'orbit'];
-    if (W.calm) opts = opts.filter(o => o !== 'reveal').concat(['still', 'still']);
-    let k = pick(opts), tries = 0; while (k === CAM.lastShot && tries++ < 6) k = pick(opts);
-    return k;
-  }
-  function directorStart(big, force) {
-    const kind = force || pickShot(big); CAM.shot = kind; CAM.lastShot = kind; CAM.t = 0; CAM.ys = null;
-    const o = CAM.o = { side: rnd() < 0.5 ? -1 : 1, d0: W.d };
-    if (kind === 'track') Object.assign(o, { lat: R(-12, 12), h: R(3.5, 8), len: R(9, 15) });
-    else if (kind === 'drone') Object.assign(o, { lat: R(-60, 60), h: R(45, 110), len: R(10, 16) });
-    else if (kind === 'reveal') Object.assign(o, { lat: R(-14, 14), h0: 1.4, h1: R(55, 95), len: R(10, 14) });
-    else if (kind === 'side') Object.assign(o, { lat: o.side * R(20, 40), h: R(3, 10), len: R(9, 14) });
-    else if (kind === 'grass') Object.assign(o, { lat: R(-8, 8), h: 0.75, len: R(8, 12) });
-    else if (kind === 'still') { const d = W.d + R(50, 110), lat = o.side * R(20, 55), h = R(3, 12); onPath(d, lat, tv); o.cam = V(tv.x, groundMax(tv.x, tv.z, 3) + h, tv.z); const ld = d + R(110, 260); onPath(ld, -lat * R(0.2, 0.9), tv); o.look = V(tv.x, groundAt(tv.x, tv.z) + R(4, 20), tv.z); o.len = R(8, 13); }
-    else if (kind === 'orbit') { const lm = props && props.landmarks.find(l => l.d > W.d + 30 && l.d < W.d + 260); let tx, tz, ty;
-      if (lm) { tx = lm.x; tz = lm.z; ty = lm.y; } else { onPath(W.d + R(60, 110), R(-30, 30), tv); tx = tv.x; tz = tv.z; ty = groundAt(tx, tz) + 6; }
-      Object.assign(o, { tgt: V(tx, ty, tz), r: R(28, 50), h: R(6, 20), a0: R(0, 6.28), w: o.side * R(0.05, 0.085), len: R(10, 15) }); }
-    if (W.calm) o.len *= 1.5;
-    CAM.len = o.len;
-  }
-  function directorCam(dt) {
-    const o = CAM.o, t = CAM.t, d = W.d; let targetY, smooth = 2.2;
-    if (CAM.shot === 'track') { onPath(d, o.lat, camP); targetY = groundMax(camP.x, camP.z, 6) + o.h; onPath(d + 45, o.lat * 0.4, look); look.y = groundAt(look.x, look.z) + o.h * 0.75; }
-    else if (CAM.shot === 'drone') { onPath(d, o.lat, camP); targetY = groundMax(camP.x, camP.z, 30) + o.h; onPath(d + 190, o.lat * 0.3, look); look.y = groundAt(look.x, look.z) + 8; smooth = 0.8; }
-    else if (CAM.shot === 'reveal') { const dc = o.d0 + (d - o.d0) * 0.35, e = sstep(0.05, 0.95, t / o.len); onPath(dc, o.lat, camP); targetY = groundMax(camP.x, camP.z, 4) + mix(o.h0, o.h1, e); onPath(dc + 130, o.lat * 0.4, look); look.y = groundAt(look.x, look.z) + mix(2.5, 10, e) + mix(o.h0, o.h1, e) * 0.25; smooth = 6; }
-    else if (CAM.shot === 'side') { onPath(d, o.lat, camP); targetY = groundMax(camP.x, camP.z, 4) + o.h; onPath(d + 22, o.lat - o.side * 90, look); look.y = groundAt(look.x, look.z) + o.h * 0.8 + 3; }
-    else if (CAM.shot === 'grass') { const dc = o.d0 + (d - o.d0) * 0.45; onPath(dc, o.lat, camP); targetY = groundAt(camP.x, camP.z) + o.h; onPath(dc + 30, o.lat, look); look.y = groundAt(look.x, look.z) + 2.2; smooth = 8; }
-    else if (CAM.shot === 'still') { camP.copy(o.cam); targetY = o.cam.y; look.copy(o.look); }
-    else if (CAM.shot === 'orbit') { const a = o.a0 + o.w * t; camP.set(o.tgt.x + Math.cos(a) * o.r, 0, o.tgt.z + Math.sin(a) * o.r); targetY = Math.max(groundMax(camP.x, camP.z, 3) + 2, o.tgt.y) + o.h * 0.5; look.copy(o.tgt); }
-    if (CAM.ys == null) CAM.ys = targetY; else CAM.ys += (targetY - CAM.ys) * Math.min(1, dt * smooth);
-    camP.y = Math.max(CAM.ys, groundAt(camP.x, camP.z) + 0.6);
-    const sway = W.calm ? 0.3 : 1, hand = CAM.shot === 'still' ? 0.15 : CAM.shot === 'drone' ? 0.6 : 0.4;
-    camP.x += Math.sin(W.t * 0.37) * hand * sway; camP.y += Math.sin(W.t * 0.53) * hand * 0.6 * sway;
-    cam.position.copy(camP); cam.lookAt(look);
-    const bank = CAM.shot === 'drone' || CAM.shot === 'track' ? -(pathX(d + 40) - pathX(d)) * 0.004 : 0; cam.rotateZ(bank);
-    const fov = (CAM.shot === 'still' ? 42 : CAM.shot === 'drone' ? 58 : CAM.shot === 'grass' ? 62 : 52) + (W.calm ? 0 : W.kick * 0.6);
-    if (Math.abs(cam.fov - fov) > 0.02) { cam.fov = fov; cam.updateProjectionMatrix(); }
-  }
-  // cuts land on the beat: timeline mode passes a bar-boundary flag, live mode a predicted downbeat
-  function directorTick(dt, M) {
-    CAM.t += dt;
-    if (M.big && CAM.t > 2.5 && W.t - W.lastBig > 14) { W.lastBig = W.t; directorStart(true); return true; }
-    if (CAM.t > CAM.len && (M.downbeat || CAM.t > CAM.len + 5)) { directorStart(false); return true; }
-    return false;
-  }
-
-  // ---------------- music → world ----------------
-  function onNote(pitch, vel = 0.8) { W.flare = Math.min(1.6, W.flare + 0.5 * vel); W.streakT -= 1; if (W.streakT <= 0) { W.streakT = W.calm ? 4 : 2; spawnStreak(pitch); } }
-  function onBass(v = 0.7) {
-    const g = PU.gust.value[W.gustI]; W.gustI = (W.gustI + 1) % 4; cam.getWorldDirection(tv);
-    g.set(cam.position.x + tv.x * R(6, 30) + R(-10, 10), cam.position.z + tv.z * R(6, 30) + R(-10, 10), W.t, (W.calm ? 0.25 : 0.45) * v);
-  }
-  function onChord(c) {
-    W.chords++; W.chordFlash = 1;
-    if (c) { const off = ((((c.root * 7) % 12) - (W.tonicCof || 0) + 18) % 12) - 6; W.hueT = (off / 6) * 0.012 + ({ m7: -0.006, m7b5: -0.01, dim7: -0.01 }[c.q] || 0); }
-    if (W.chords % 7 === 0 && props) props.flock();
-  }
-  function onBig() { if (props && rnd() < 0.7) props.flock(); }
-
-  // ---------------- per-frame ----------------
-  function step(dt, M) {
-    W.t += dt; W.calm = M.calm; PU.time.value = W.t; perf(dt);
-    if (wantTod === 'auto' && Math.floor(W.t) % 30 === 0 && Math.floor(W.t - dt) % 30 !== 0) { const k = clockTod(); if (k !== curTod) applyTod(k); }
-    if (W.fadeDir > 0) { W.fade = Math.min(1, W.fade + dt / 0.6); if (W.fade >= 1) { if (W.pending) { applyScene(W.pending); W.pending = null; } W.fadeDir = -1; } }
-    else if (W.fadeDir < 0) { W.fade = Math.max(0, W.fade - dt / 1.2); if (W.fade <= 0) W.fadeDir = 0; }
-    post.uniforms.fade.value = W.fade;
-
-    W.level += (M.level - W.level) * Math.min(1, dt * 0.6);
-    const target = (M.calm ? 4.5 : 5.5) + (M.calm ? 4 : 10) * W.level; W.speed += (target - W.speed) * Math.min(1, dt * 0.4); W.d += W.speed * dt;
-    W.hit *= Math.exp(-dt * 5); W.kick *= Math.exp(-dt * 6); W.flare *= Math.exp(-dt * 3); W.chordFlash *= Math.exp(-dt * 1.2); W.swell *= Math.exp(-dt * 0.7);
-    const oh = W.hue; W.hue += (W.hueT - W.hue) * Math.min(1, dt * 0.8); if (Math.abs(W.hue - oh) > 1e-4 || W.chordFlash > 0.01) tintPalette();
-    PU.windAmp.value = (M.calm ? 0.15 : 0.2) + W.level * (M.calm ? 0.25 : 0.55); PU.cloudSpeed.value = 0.012 + W.level * 0.02; PU.glint.value = W.flare * 0.3;
-
-    directorTick(dt, M);
-    directorCam(dt);
-    updateTiles(cam.position.x, cam.position.z, 6); updateGrass(cam.position.x, cam.position.z, CAM.t < 0.05 ? null : 4);
-    if (props) { for (const l of props.lay) { let n = 0; while (l.next < W.d + 760 && n++ < 400) { l.fn(l.next); l.next += R(l.gap[0], l.gap[1]); } } for (const m of props.movers) m.update(dt, W.t); }
-    W.ambBird -= dt; if (W.ambBird < 0 && props) { W.ambBird = R(25, 50); props.flock(); }
-    updateStreaks(dt); streakMesh.material.uniforms.col.value.copy(PU.sunCol.value).multiplyScalar(0.12 / Math.max(0.2, TD.si)).addScalar(curTod === 'night' ? 0.12 : 0.35);
-
-    sky.position.copy(cam.position); water.position.set(cam.position.x, SC.water, cam.position.z); water.visible = SC.water > -100;
-    PU.camXZ.value.set(cam.position.x, cam.position.z); PU.fogBase.value = SC.water;
-    const mu = motes.material.uniforms; mu.camPos.value.copy(cam.position); mu.hit.value = W.hit; mu.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
-    // light shafts toward the sun when it is in frame
-    tv.copy(PU.sunDir.value).multiplyScalar(1000).add(cam.position).project(cam); cam.getWorldDirection(tv2);
-    const facing = tv2.dot(PU.sunDir.value), onScreen = tv.z < 1 && facing > 0;
-    rays.uniforms.sunUV.value.set(tv.x * 0.5 + 0.5, tv.y * 0.5 + 0.5); rays.uniforms.col.value.copy(PU.sunCol.value).multiplyScalar(1 / Math.max(0.3, TD.si));
-    rays.uniforms.amt.value = onScreen && TD.el > -1 && curTod !== 'night' ? sstep(0.2, 0.8, facing) * (curTod === 'day' ? 0.5 : 1) * (1 + W.chordFlash * 0.4 + W.swell * 0.5) : 0;
-    bloom.strength = 0.18 + W.level * 0.06 + W.swell * 0.12 + (curTod === 'night' ? 0.15 : 0);
-    post.uniforms.time.value = W.t % 100;
-    if (!W.noRender) composer.render();
-  }
-
-  // ---------------- drivers ----------------
-  let S = null;
-  function chordIdx(chords, t) { let lo = 0, hi = chords.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (chords[m].s <= t + 1e-6) lo = m; else hi = m - 1; } return lo; }
-  function firstAfter(ev, t) { let lo = 0, hi = ev.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ev[m].t < t) lo = m + 1; else hi = m; } return lo; }
-  function resolveAuto() {
-    const m = songMood; if (!m) return cur || 'valley';
-    const e = m.energy, b = m.bright ?? 0.5, fast = clamp(((m.bpm || 95) - 95) / 40, 0, 1), slow = clamp((95 - (m.bpm || 95)) / 30, 0, 1), mi = m.minor ? 1 : 0;
-    const sc = { valley: 0.6 + 0.3 * (1 - Math.abs(e - 0.45) * 2) + 0.2 * slow, highlands: 0.9 * e + 0.3 * fast, forest: 0.6 * mi + 0.4 * (1 - b), coast: 0.5 * b + 0.4 * (1 - mi) + 0.3 * fast };
-    let best = 'valley'; for (const k of SC_ORDER) if (sc[k] > sc[best]) best = k; return best;
-  }
-  function setTheme(k, now) {
-    want = k; const key = k === 'auto' ? resolveAuto() : k;
-    if (key === cur && !now) return;
-    if (now) { applyScene(key); W.fade = 1; W.fadeDir = -1; } else { W.pending = key; W.fadeDir = 1; }
-  }
-  function setTime(k) { wantTod = k; applyTod(k === 'auto' ? clockTod() : k); }
-  function load(song, arr) {
-    if (!Rr) return; mode = 'timeline';
-    const ch = song.chart, E = ch.energy.length ? ch.energy : [0.5];
-    const sm = E.map((_, i) => { let a = 0, n = 0; for (let j = i - 2; j <= i + 2; j++) if (E[j] != null) { a += E[j]; n++; } return a / n; });
-    S = { E: sm, chords: arr.chords, lenJb: ch.lenJb, endJb: arr.endJb, lead: arr.events.filter(e => e.k === 'lead' && e.d > 0.09), bass: arr.events.filter(e => e.k === 'bass'), drums: arr.events.filter(e => e.k === 'drum'), pL: 0, pB: 0, pD: 0, last: -1, ci: -1, bar: -1 };
-    W.tonicCof = (((ch.key.minor ? ch.key.root + 3 : ch.key.root) % 12) * 7) % 12;
-    const ld = S.lead, avgN = ld.length ? ld.reduce((a, e) => a + e.n, 0) / ld.length : 70;
-    songMood = { minor: !!ch.key.minor, energy: E.reduce((a, b) => a + b, 0) / E.length, bpm: ch.bpm, bright: clamp((avgN - 58) / 24, 0, 1) };
-    if (want === 'auto') setTheme('auto');
-  }
-  function frame(jb, dt, opts) {
-    if (!Rr || !S || mode !== 'timeline') return;
-    if (jb < S.last - 0.5 || jb > S.last + 8) { S.pL = firstAfter(S.lead, jb - 0.01); S.pB = firstAfter(S.bass, jb - 0.01); S.pD = firstAfter(S.drums, jb - 0.01); }
-    while (S.pL < S.lead.length && S.lead[S.pL].t <= jb) { const e = S.lead[S.pL++]; if (jb - e.t < 1) onNote(clamp((e.n - 58) / 28, 0, 1), e.v ?? 0.8); }
-    while (S.pB < S.bass.length && S.bass[S.pB].t <= jb) { const e = S.bass[S.pB++]; if (jb - e.t < 1) onBass(0.7); }
-    let big = false;
-    while (S.pD < S.drums.length && S.drums[S.pD].t <= jb) { const e = S.drums[S.pD++]; if (jb - e.t > 1) continue; if (e.n === 'ride' || e.n === 'tap') W.hit = Math.min(1.2, W.hit + (e.v || 0.6) * 0.5); else if (e.n === 'kick') W.kick = Math.min(1, W.kick + (e.v || 0.6) * 0.8); else if (e.n === 'swell') { W.swell = 1; big = true; onBig(); } }
-    S.last = jb;
-    const ci = chordIdx(S.chords, Math.min(jb, S.lenJb)); if (ci !== S.ci) { onChord(S.chords[ci]); S.ci = ci; }
-    const bar = Math.max(0, Math.floor(jb / 4)), b4 = Math.floor(bar / 4); const downbeat = bar !== S.bar && bar % 4 === 0; S.bar = bar;
-    const E = S.E[Math.min(S.E.length - 1, bar)] ?? 0.4, prevE = S.E[Math.max(0, Math.min(S.E.length - 1, bar - 4))] ?? E;
-    if (downbeat && E - prevE > 0.22) big = true;
-    const ending = clamp((jb - (S.endJb - 4)) / 4, 0, 1);
-    step(dt, { calm: !!opts.calm, level: (E * 0.75 + (opts.level || 0) * 0.4) * (1 - ending * 0.6), downbeat, big });
-    if (ending > 0) { post.uniforms.fade.value = Math.max(post.uniforms.fade.value, ending * 0.9); }
-  }
-  const LV = { chordKey: null, prev: null, onT: 0, lvSlow: 0 };
-  const MD = { t: 0, lv: 0, br: 0, on: 0, quiet: 0, bpm: 0, minor: false, decided: false, lastSwitch: -1e9 };
-  function resetMood() { MD.t = 0; MD.lv = 0; MD.br = 0; MD.on = 0; MD.bpm = 0; MD.decided = false; }
-  function moodTick(dt, f) {
-    if (!f.active) return; const lv = f.level || 0;
-    if (lv < 0.04) { MD.quiet += dt; if (MD.quiet > 2 && MD.t > 0) resetMood(); return; }
-    MD.quiet = 0; MD.t += dt; MD.lv += lv * dt; MD.br += (f.pitch ?? 0.5) * dt; MD.on += (f.onsets || []).length;
-    if ((f.tempoConf || 0) > 0.35) MD.bpm = f.bpm; if (f.keyRoot != null) MD.minor = !!f.keyMinor;
-    if (!MD.decided && MD.t > 18) { MD.decided = true; songMood = { energy: Math.min(1, MD.lv / MD.t * 1.3), bright: MD.br / MD.t, busy: Math.min(1, MD.on / MD.t / 4), bpm: MD.bpm || 95, minor: MD.minor };
-      if (want === 'auto' && W.t - MD.lastSwitch > 40) { MD.lastSwitch = W.t; setTheme('auto'); } }
-  }
-  function live() { if (!Rr) return; mode = 'live'; S = null; songMood = null; LV.chordKey = null; resetMood(); }
-  function frameLive(dt, f, opts) {
-    if (!Rr || mode !== 'live') return;
-    moodTick(dt, f);
-    if (f.keyRoot != null) W.tonicCof = (((f.keyMinor ? f.keyRoot + 3 : f.keyRoot) % 12) * 7) % 12;
-    W.hit = Math.max(W.hit, f.hit || 0); W.kick = Math.max(W.kick, f.kick || 0); W.swell = Math.max(W.swell, f.swell || 0);
-    let big = false; if ((f.swell || 0) > 0.8) { big = true; onBig(); }
-    LV.lvSlow += ((f.level || 0) - LV.lvSlow) * Math.min(1, dt * 0.15); if ((f.level || 0) - LV.lvSlow > 0.3) big = true;
-    LV.onT -= dt; for (const o of (f.onsets || [])) { if (LV.onT > 0) break; LV.onT = 0.12; onNote(o, 0.7); }
-    if ((f.kickHit || 0) > 0) onBass(Math.min(1, f.kickHit));
-    const ck = f.chord ? f.chord.root + f.chord.q : null; if (ck !== LV.chordKey) { if (ck) onChord(f.chord); LV.prev = f.chord; LV.chordKey = ck; }
-    const downbeat = (f.tempoConf || 0) > 0.4 && f.downbeatIn != null && f.downbeatIn < dt * 1.5;
-    step(dt, { calm: !!opts.calm, level: f.level || 0, downbeat, big });
-  }
-
-  return { init, load, frame, live, frameLive, setBaseHue() {}, setTheme: k => setTheme(k), setTime,
-    get themes() { return [{ key: 'auto', name: 'Auto' }].concat(SC_ORDER.map(k => ({ key: k, name: SCN[k].name }))); },
-    get times() { return [{ key: 'auto', name: 'Auto' }].concat(TOD_ORDER.map(k => ({ key: k, name: TOD[k].name }))); },
-    get theme() { return cur; }, get themeName() { return SCN[cur].name + ' · ' + TD.name; }, get want() { return want; }, get wantTime() { return wantTod; },
-    set letterbox(v) { W.letterbox = !!v; resize(); },
-    get mode() { return mode; }, get ok() { return !!Rr; },
-    _dbg() { return { W, CAM, cam, PU, post, rays, bloom, tiles, gchunks, props }; },
-    _shot(k) { directorStart(false, k); },
-    _ff(n, dt, f) { W.noRender = true; for (let i = 0; i < n; i++) frameLive(dt, Object.assign({ level: 0.5, pitch: 0.5 }, f || {}, { onsets: i % 7 === 0 ? [Math.random()] : [], kickHit: i % 16 === 0 ? 1 : 0 }), {}); W.noRender = false; composer.render(); } };
-})();
-
-</script>
-<script>
-// ===== Reel: music TV from real footage (Pixabay or Pexels), directed to the beat =====
-const Reel = (() => {
-  const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
-  const R = (a, b) => a + (b - a) * Math.random(), pick = a => a[Math.floor(Math.random() * a.length)], clamp = (x, a, b) => x < a ? a : x > b ? b : x;
-
-  // Real places that already look like fantasy. Each scene has calm / mid / epic shot pools; time of day swaps in its own versions.
-  const SCN = {
-    valley: { name: 'Green Valleys', q: { calm: ['iceland landscape aerial', 'green valley fog'], mid: ['faroe islands aerial', 'scotland highlands aerial'], epic: ['iceland waterfall drone', 'canyon river aerial'] } },
-    highlands: { name: 'Mountains', q: { calm: ['mountain clouds timelapse', 'alpine lake reflection'], mid: ['dolomites aerial', 'swiss alps aerial'], epic: ['snowy mountains drone', 'mountain peaks above clouds'] } },
-    forest: { name: 'Enchanted Forest', q: { calm: ['misty forest', 'forest sunbeams'], mid: ['foggy forest aerial', 'mossy forest stream'], epic: ['rainforest waterfall aerial', 'forest canopy fog drone'] } },
-    coast: { name: 'Coastline', q: { calm: ['ocean waves slow motion', 'sea cliffs calm'], mid: ['sea cliffs aerial', 'rugged coastline drone'], epic: ['waves crashing rocks', 'big ocean waves aerial'] } }
-  };
-  const NIGHT = { calm: ['milky way timelapse', 'starry sky timelapse'], mid: ['aurora borealis', 'northern lights timelapse'], epic: ['aurora borealis dancing', 'night sky stars mountains timelapse'] };
-  const TOD = {
-    dawn: { name: 'Dawn', add: ' sunrise', grade: { b: 1.0, c: 1.04, s: 1.05, sep: 0.1, hue: -3 } },
-    day: { name: 'Midday', add: '', grade: { b: 1.0, c: 1.06, s: 1.08, sep: 0, hue: 0 } },
-    golden: { name: 'Golden Hour', add: ' sunset', grade: { b: 1.02, c: 1.06, s: 1.12, sep: 0.16, hue: -4 } },
-    dusk: { name: 'Dusk', add: ' twilight', grade: { b: 0.94, c: 1.06, s: 0.95, sep: 0.06, hue: -8 } },
-    night: { name: 'Night', add: null, grade: { b: 0.95, c: 1.08, s: 1.0, sep: 0, hue: 4 } }
-  };
-  const SC_ORDER = ['valley', 'highlands', 'forest', 'coast'], TOD_ORDER = ['dawn', 'day', 'golden', 'dusk', 'night'];
-  function clockTod() { const d = new Date(), h = d.getHours() + d.getMinutes() / 60; return h >= 5 && h < 8 ? 'dawn' : h >= 8 && h < 16.5 ? 'day' : h >= 16.5 && h < 19 ? 'golden' : h >= 19 && h < 20.5 ? 'dusk' : 'night'; }
-
-  let ok = false, mode = 'none', want = 'auto', cur = 'valley', wantTod = 'auto', curTod = 'day', songMood = null, status = '';
-  let root, layer, vids = [], live = null, next = null, fx, ctx, grain, bars, flash, credit, msg;
-  const W = { t: 0, level: 0.3, kick: 0, hit: 0, swell: 0, hue: 0, hueT: 0, wash: 0, washHue: 0, calm: false, letterbox: true, shotT: 0, shotLen: 6, lastBig: -99, streakT: 0, recent: [], kb: null };
-  const pools = {}, fetching = {};
-
-  // ---------- Pexels ----------
-  const key = () => ls.get('vg.pexels');
-  function bestFile(v) {
-    const want = Math.min(1920, Math.max(1280, innerWidth * (devicePixelRatio || 1) * 0.9));
-    const files = (v.video_files || []).filter(f => f.file_type === 'video/mp4' && f.width >= f.height && f.width >= 1000);
-    files.sort((a, b) => a.width - b.width);
-    return files.find(f => f.width >= want) || files[files.length - 1] || null;
-  }
-  const isPixabay = k => /^\d+-[0-9a-f]{16,}$/i.test(k || '');
-  const source = () => isPixabay(key()) ? 'Pixabay' : 'Pexels';
-  async function searchPixabay(q) {
-    const r = await fetch('https://pixabay.com/api/videos/?' + new URLSearchParams({ key: key(), q, video_type: 'film', min_width: '1280', per_page: '60', safesearch: 'true' }));
-    if (r.status === 400 || r.status === 401 || r.status === 403) throw Object.assign(new Error('Pixabay rejected the API key. Check it in Settings.'), { fatal: true });
-    if (r.status === 429) throw Object.assign(new Error('Pixabay rate limit reached. Footage resumes in a minute.'), { fatal: true });
-    if (!r.ok) throw new Error('Pixabay error ' + r.status);
-    const want = innerWidth * (devicePixelRatio || 1) > 1500 ? ['medium', 'small', 'large'] : ['small', 'medium'];
-    return ((await r.json()).hits || []).map(h => { const f = want.map(k => h.videos && h.videos[k]).find(x => x && x.url && x.width >= 1200 && x.width >= x.height * 1.4);
-      return f ? { id: 'pb' + h.id, duration: h.duration, url: h.pageURL, user: { name: h.user }, video_files: [{ file_type: 'video/mp4', width: f.width, height: f.height, link: f.url }] } : null; }).filter(Boolean);
-  }
-  async function search(q) {
-    if (isPixabay(key())) return searchPixabay(q);
-    const r = await fetch('https://api.pexels.com/videos/search?' + new URLSearchParams({ query: q, orientation: 'landscape', size: 'medium', per_page: '40' }), { headers: { Authorization: key() } });
-    if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Pexels rejected the API key. Check it in Settings.'), { fatal: true });
-    if (r.status === 429) throw Object.assign(new Error('Pexels hourly limit reached. Footage resumes within the hour.'), { fatal: true });
-    if (!r.ok) throw new Error('Pexels error ' + r.status);
-    return (await r.json()).videos || [];
-  }
-  function queriesFor(scene, tod) {
-    const T = TOD[tod], base = SCN[scene].q;
-    if (T.add == null) { const extra = { valley: 'iceland night aurora', highlands: 'mountains night stars', forest: 'forest night moonlight', coast: 'ocean night moon' }[scene]; return { calm: NIGHT.calm, mid: NIGHT.mid.concat([extra]), epic: NIGHT.epic }; }
-    const o = {}; for (const t of ['calm', 'mid', 'epic']) o[t] = base[t].map((q, i) => i === 0 && T.add ? q + T.add : q); return o;
-  }
-  async function ensurePool(scene, tod) {
-    const id = scene + ':' + tod + ':' + source(); if (pools[id] && pools[id].items.length) return pools[id]; if (fetching[id]) return fetching[id];
-    if (!key()) { status = 'nokey'; showMsg('Add your free Pixabay key in Settings to start the footage.'); return null; }
-    try { const c = JSON.parse(ls.get('vg.px.' + id) || 'null'); if (c && Date.now() - c.t < 36e5 * 24 && c.items.length > 12) return (pools[id] = c); } catch (e) {}
-    const P = pools[id] = { t: Date.now(), items: [] }, Q = queriesFor(scene, tod), seen = new Set();
-    fetching[id] = (async () => {
-      for (const tier of ['mid', 'calm', 'epic']) for (const q of Q[tier]) {
-        try {
-          const vs = await search(q);
-          for (const v of vs) { if (seen.has(v.id) || v.duration < 7) continue; const f = bestFile(v); if (!f) continue; seen.add(v.id);
-            P.items.push({ id: v.id, tier, q: q.replace(/ (sunrise|sunset|twilight)$/, ''), dur: v.duration, src: f.link, by: v.user?.name || 'Pexels', url: v.url }); }
-          if (P.items.length && !live) startFirst();
-        } catch (e) { if (e.fatal) { showMsg(e.message); break; } if (e instanceof TypeError) { showMsg('The browser could not reach ' + source() + '. Check your connection or network filter.'); break; } }
-      }
-      if (P.items.length > 12) ls.set('vg.px.' + id, JSON.stringify(P));
-      delete fetching[id]; return P;
-    })();
-    return fetching[id];
-  }
-
-  // ---------- DOM ----------
-  function el(tag, css, parent) { const e = document.createElement(tag); e.style.cssText = css; (parent || root).appendChild(e); return e; }
-  function init(cv) {
-    cv.style.display = 'none';
-    root = document.createElement('div'); root.id = 'reel'; root.style.cssText = 'position:fixed;inset:0;background:#000;overflow:hidden;z-index:0';
-    document.body.insertBefore(root, document.body.firstChild);
-    layer = el('div', 'position:absolute;inset:0;will-change:filter');
-    for (let i = 0; i < 3; i++) { const v = el('video', 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;will-change:transform,opacity;transform-origin:50% 50%', layer);
-      v.muted = true; v.playsInline = true; v.preload = 'auto'; v.loop = true; v.setAttribute('aria-hidden', 'true'); vids.push({ v, ready: false, clip: null }); }
-    fx = el('canvas', 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none'); ctx = fx.getContext('2d');
-    el('div', 'position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(0,0,0,.55) 100%)');
-    { const c = document.createElement('canvas'); c.width = c.height = 160; const x = c.getContext('2d'), d = x.createImageData(160, 160); for (let i = 0; i < d.data.length; i += 4) { const n = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = n; d.data[i + 3] = 255; } x.putImageData(d, 0, 0);
-      grain = el('div', `position:absolute;inset:-160px;pointer-events:none;opacity:.07;mix-blend-mode:overlay;background:url(${c.toDataURL()})`); }
-    flash = el('div', 'position:absolute;inset:0;pointer-events:none;background:#fff;opacity:0');
-    bars = [el('div', 'position:absolute;left:0;right:0;top:0;background:#000;pointer-events:none'), el('div', 'position:absolute;left:0;right:0;bottom:0;background:#000;pointer-events:none')];
-    credit = el('a', 'position:absolute;right:20px;font:500 11px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;color:rgba(243,232,214,.75);text-decoration:none;opacity:0;transition:opacity .8s;text-shadow:0 1px 8px rgba(0,0,0,.8);z-index:2');
-    credit.target = '_blank'; credit.rel = 'noopener';
-    msg = el('div', 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(460px,calc(100vw - 32px));text-align:center;font:500 15px/1.5 "Instrument Sans",system-ui,sans-serif;color:#f3e8d6;opacity:0;transition:opacity .6s');
-    resize(); addEventListener('resize', resize);
-    applyTod(wantTod === 'auto' ? clockTod() : wantTod);
-    ok = true; ensurePool(cur, curTod);
-  }
-  function resize() {
-    if (!fx) return; fx.width = Math.round(innerWidth / 2); fx.height = Math.round(innerHeight / 2);
-    const bh = W.letterbox && innerWidth / innerHeight > 1.3 ? Math.max(0, (innerHeight - innerWidth / 2.1) / 2) : 0;
-    bars[0].style.height = bars[1].style.height = bh + 'px'; credit.style.bottom = Math.max(14, bh / 2 - 8) + 'px';
-  }
-  function showMsg(t) { if (!msg) return; msg.textContent = t || ''; msg.style.opacity = t ? 1 : 0; }
-
-  // ---------- shots ----------
-  function tierNow() { const lv = W.level, r = Math.random(); let t = lv < 0.36 ? 'calm' : lv < 0.64 ? 'mid' : 'epic'; if (r < 0.22) t = t === 'calm' ? 'mid' : t === 'epic' ? 'mid' : pick(['calm', 'epic']); return W.calm && t === 'epic' ? 'mid' : t; }
-  function chooseClip() {
-    const P = pools[cur + ':' + curTod + ':' + source()] || Object.values(pools).find(p => p.items.length); if (!P || !P.items.length) return null;
-    const tier = tierNow(); let c = P.items.filter(x => x.tier === tier && !W.recent.includes(x.id)); if (!c.length) c = P.items.filter(x => !W.recent.includes(x.id)); if (!c.length) c = P.items;
-    const clip = pick(c); W.recent.push(clip.id); if (W.recent.length > Math.min(30, P.items.length - 2)) W.recent.shift(); return clip;
-  }
-  function prep(slot) {
-    const clip = chooseClip(); if (!clip) return; slot.ready = false; slot.clip = clip; slot.seekTo = null;
-    const v = slot.v; v.onloadedmetadata = () => { const d = v.duration || clip.dur; slot.seekTo = R(0.4, Math.max(0.5, d - 9)); v.currentTime = slot.seekTo; };
-    v.onseeked = () => { if (slot.clip === clip) slot.ready = true; };
-    v.onerror = () => { if (slot.clip === clip) setTimeout(() => prep(slot), 300); };
-    v.src = clip.src; v.load();
-  }
-  let fading = null, starting = false;
-  function freeSlot() { return vids.find(s => s !== live && s !== next && s !== fading) || vids.find(s => s !== live && s !== next); }
-  function startFirst() { showMsg(''); if (live || starting) return; starting = true; next = freeSlot(); prep(next); const wait = () => { if (next && next.ready) cut(true); else setTimeout(wait, 150); }; wait(); }
-  function cut(first, big) {
-    if (!next || !next.ready) return false;
-    const old = live; live = next; next = null;
-    const fade = !first && (W.calm || big === 'fade'); const v = live.v;
-    v.playbackRate = W.calm ? 0.8 : W.level < 0.36 ? 0.85 : 1; v.play().catch(() => {});
-    v.style.transition = fade ? 'opacity .7s ease' : 'none'; v.style.zIndex = 2; v.style.opacity = 1;
-    if (old) { old.v.style.zIndex = 1; fading = old; setTimeout(() => { if (old !== live) { old.v.style.opacity = 0; old.v.pause(); } if (fading === old) fading = null; }, fade ? 750 : 30); }
-    W.shotT = 0; W.shotLen = shotLength(); const z = Math.random() < 0.5; W.kb = { s0: z ? R(1.03, 1.06) : R(1.09, 1.13), s1: z ? R(1.09, 1.13) : R(1.03, 1.06), x0: R(-1.5, 1.5), y0: R(-1, 1), x1: R(-1.5, 1.5), y1: R(-1, 1), leak: pick([[0.1, 0.05], [0.9, 0.08], [0.85, 0.9], [0.12, 0.85]]) };
-    if (big && !W.calm) flash.style.transition = 'none', flash.style.opacity = 0.35, requestAnimationFrame(() => { flash.style.transition = 'opacity .9s ease-out'; flash.style.opacity = 0; });
-    const c = live.clip; credit.textContent = cap(c.q) + '  ·  Video by ' + c.by + ' on ' + source(); credit.href = c.url; credit.style.opacity = 1; W.creditT = 3.5;
-    next = freeSlot(); prep(next); return true;
-  }
-  const cap = s => s.replace(/\b(aerial|drone|timelapse|slow motion|dancing|calm)\b/g, '').replace(/\s+/g, ' ').trim().replace(/^./, m => m.toUpperCase());
-  function shotLength() { const lv = W.level; let s = lv < 0.36 ? R(7, 11) : lv < 0.64 ? R(5, 8) : R(3.5, 6); return W.calm ? s * 1.5 : s; }
-
-  // ---------- music → picture ----------
-  const motes = [], streaks = [];
-  for (let i = 0; i < 90; i++) motes.push({ x: Math.random(), y: Math.random(), z: R(0.3, 1), ph: R(0, 6.28), s: R(0.6, 1.6) });
-  function onNote(pitch) { W.streakT -= 1; if (W.streakT > 0 || streaks.length > 7) return; W.streakT = W.calm ? 4 : 2;
-    const fromL = Math.random() < 0.5; streaks.push({ x: fromL ? -0.05 : 1.05, y: clamp(0.75 - pitch * 0.55 + R(-0.1, 0.1), 0.15, 0.85), vx: (fromL ? 1 : -1) * R(0.18, 0.3), vy: R(-0.03, 0.03), a: 0, spin: R(1.5, 4) * (Math.random() < 0.5 ? 1 : -1), curl: Math.random() < 0.45, pts: [], age: 0, life: R(2.6, 3.8) }); }
-  function onBass(v) { W.kick = Math.min(1, W.kick + 0.7 * v); }
-  function onChord(c) { if (!c) return; const off = ((((c.root * 7) % 12) - (W.tonicCof || 0) + 18) % 12) - 6; W.hueT = off * 0.9; W.wash = 0.06; W.washHue = (off * 30 + 360) % 360; }
-  function drawFx(dt) {
-    const w = fx.width, h = fx.height; ctx.clearRect(0, 0, w, h); ctx.globalCompositeOperation = 'lighter';
-    // light leak that breathes with the bass
-    const k = W.kb ? W.kb.leak : [0.9, 0.08], night = curTod === 'night', warm = night ? '150,180,255' : curTod === 'day' ? '255,235,200' : '255,170,90';
-    const la = (night ? 0.05 : 0.1) + (W.calm ? 0.06 : 0.16) * W.kick + 0.1 * W.swell; const g = ctx.createRadialGradient(k[0] * w, k[1] * h, 0, k[0] * w, k[1] * h, w * 0.75);
-    g.addColorStop(0, `rgba(${warm},${la})`); g.addColorStop(1, `rgba(${warm},0)`); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-    if (W.wash > 0.003) { ctx.fillStyle = `hsla(${W.washHue},70%,60%,${W.wash})`; ctx.fillRect(0, 0, w, h); }
-    // dust in the light by day, fireflies at night
-    const ff = night || curTod === 'dusk';
-    for (const m of motes) {
-      m.x += (Math.sin(W.t * 0.3 + m.ph) * 0.004 + 0.003 * m.z) * dt; m.y += (Math.cos(W.t * 0.25 + m.ph) * 0.004 - (ff ? 0.002 : 0.004) * m.z) * dt;
-      if (m.x > 1.05) m.x = -0.05; if (m.x < -0.05) m.x = 1.05; if (m.y < -0.05) m.y = 1.05; if (m.y > 1.05) m.y = -0.05;
-      const bl = ff ? Math.max(0, Math.sin(W.t * 1.3 + m.ph * 5)) ** 3 : 0.5 + 0.5 * Math.sin(W.t * 0.8 + m.ph);
-      const a = (ff ? 0.75 : 0.18 + 0.25 * W.level) * bl * m.z + W.hit * 0.15 * m.z; if (a < 0.01) continue;
-      const r = (ff ? 2.2 : 1.3) * m.s * m.z; ctx.fillStyle = ff ? `rgba(210,255,140,${a})` : `rgba(255,245,220,${a})`; ctx.beginPath(); ctx.arc(m.x * w, m.y * h, r, 0, 6.283); ctx.fill();
-      if (ff) { ctx.fillStyle = `rgba(210,255,140,${a * 0.18})`; ctx.beginPath(); ctx.arc(m.x * w, m.y * h, r * 4, 0, 6.283); ctx.fill(); }
-    }
-    // wind streaks drawn by the melody
-    ctx.lineCap = 'round';
-    for (let i = streaks.length - 1; i >= 0; i--) {
-      const s = streaks[i]; s.age += dt; if (s.age > s.life + 1) { streaks.splice(i, 1); continue; }
-      if (s.age < s.life) { if (s.curl && s.age > s.life * 0.35 && s.age < s.life * 0.6) { const a = s.spin * dt, c = Math.cos(a), sn = Math.sin(a), vx = s.vx * c - s.vy * sn * (w / h), vy = s.vx * sn * (h / w) + s.vy * c; s.vx = vx; s.vy = vy; }
-        s.vy += Math.sin(s.age * 2.5) * 0.01 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.pts.push([s.x * w, s.y * h]); if (s.pts.length > 34) s.pts.shift(); }
-      else if (s.pts.length) s.pts.shift();
-      const P = s.pts, n = P.length; if (n < 2) continue; const fade = Math.min(1, s.age / 0.4) * (s.age > s.life ? Math.max(0, 1 - (s.age - s.life)) : 1);
-      for (let j = 1; j < n; j++) { const t = j / n; ctx.strokeStyle = `rgba(255,255,255,${0.55 * t * fade})`; ctx.lineWidth = 0.4 + 1.6 * Math.sin(Math.PI * t); ctx.beginPath(); ctx.moveTo(P[j - 1][0], P[j - 1][1]); ctx.lineTo(P[j][0], P[j][1]); ctx.stroke(); }
-    }
-    ctx.globalCompositeOperation = 'source-over';
-  }
-
-  // ---------- per frame ----------
-  function step(dt, M) {
-    if (!ok) return; W.t += dt; W.calm = M.calm;
-    if (wantTod === 'auto' && Math.floor(W.t) % 30 === 0 && Math.floor(W.t - dt) % 30 !== 0) { const k = clockTod(); if (k !== curTod) setTime('auto'); }
-    W.level += (M.level - W.level) * Math.min(1, dt * 0.6);
-    W.kick *= Math.exp(-dt * 5); W.hit *= Math.exp(-dt * 5); W.swell *= Math.exp(-dt * 0.8); W.wash *= Math.exp(-dt * 1.5); W.hue += (W.hueT - W.hue) * Math.min(1, dt * 0.8);
-    W.shotT += dt;
-    if (live) {
-      const wantCut = (M.big && W.shotT > 2.5 && W.t - W.lastBig > 12) ? 'big' : (W.shotT > W.shotLen && (M.downbeat || W.shotT > W.shotLen + 3)) ? 'beat' : null;
-      if (wantCut) { if (wantCut === 'big') W.lastBig = W.t; cut(false, wantCut === 'big' ? (W.calm ? 'fade' : true) : (W.calm ? 'fade' : false)); }
-      const kb = W.kb, p = clamp(W.shotT / Math.max(3, W.shotLen + 2), 0, 1), s = (kb.s0 + (kb.s1 - kb.s0) * p) * (1 + (W.calm ? 0 : W.kick * 0.01));
-      live.v.style.transform = `translate(${kb.x0 + (kb.x1 - kb.x0) * p}%,${kb.y0 + (kb.y1 - kb.y0) * p}%) scale(${s.toFixed(4)})`;
-      const lr = W.calm ? 0.8 : W.level < 0.36 ? 0.85 : 1; if (Math.abs(live.v.playbackRate - lr) > 0.05) live.v.playbackRate = lr;
-    }
-    const G = TOD[curTod].grade, lv = W.level;
-    layer.style.filter = `brightness(${(G.b * (1 + W.swell * 0.06 + (W.calm ? 0 : W.kick * 0.03))).toFixed(3)}) contrast(${(G.c + lv * 0.05).toFixed(3)}) saturate(${(G.s + lv * 0.08).toFixed(3)}) sepia(${G.sep}) hue-rotate(${(G.hue + W.hue).toFixed(1)}deg)`;
-    grain.style.transform = `translate(${Math.floor(Math.random() * 160)}px,${Math.floor(Math.random() * 160)}px)`;
-    if (W.creditT > 0) { W.creditT -= dt; if (W.creditT <= 0) credit.style.opacity = 0; }
-    drawFx(dt);
-  }
-
-  // ---------- drivers (same contract as the 3D world) ----------
-  let S = null;
-  function chordIdx(chords, t) { let lo = 0, hi = chords.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (chords[m].s <= t + 1e-6) lo = m; else hi = m - 1; } return lo; }
-  function firstAfter(ev, t) { let lo = 0, hi = ev.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ev[m].t < t) lo = m + 1; else hi = m; } return lo; }
-  function resolveAuto() {
-    const m = songMood; if (!m) return cur;
-    const e = m.energy, b = m.bright ?? 0.5, fast = clamp(((m.bpm || 95) - 95) / 40, 0, 1), slow = clamp((95 - (m.bpm || 95)) / 30, 0, 1), mi = m.minor ? 1 : 0;
-    const sc = { valley: 0.6 + 0.3 * (1 - Math.abs(e - 0.45) * 2) + 0.2 * slow, highlands: 0.9 * e + 0.3 * fast, forest: 0.6 * mi + 0.4 * (1 - b), coast: 0.5 * b + 0.4 * (1 - mi) + 0.3 * fast };
-    let best = 'valley'; for (const k of SC_ORDER) if (sc[k] > sc[best]) best = k; return best;
-  }
-  function setTheme(k) { want = k; const key2 = k === 'auto' ? resolveAuto() : k; if (key2 === cur) return; cur = key2; W.recent = []; ensurePool(cur, curTod).then(() => { if (next && !next.ready) prep(next); }); if (next) prep(next); }
-  function applyTod(k) { curTod = k; }
-  function setTime(k) { wantTod = k; const t = k === 'auto' ? clockTod() : k; if (t === curTod && ok) return; applyTod(t); if (!ok) return; W.recent = []; ensurePool(cur, curTod).then(() => { if (next) prep(next); }); if (next) prep(next); }
-  function load(song, arr) {
-    if (!ok) return; mode = 'timeline';
-    const ch = song.chart, E = ch.energy.length ? ch.energy : [0.5];
-    const sm = E.map((_, i) => { let a = 0, n = 0; for (let j = i - 2; j <= i + 2; j++) if (E[j] != null) { a += E[j]; n++; } return a / n; });
-    S = { E: sm, chords: arr.chords, lenJb: ch.lenJb, endJb: arr.endJb, lead: arr.events.filter(e => e.k === 'lead' && e.d > 0.09), bass: arr.events.filter(e => e.k === 'bass'), drums: arr.events.filter(e => e.k === 'drum'), pL: 0, pB: 0, pD: 0, last: -1, ci: -1, bar: -1 };
-    W.tonicCof = (((ch.key.minor ? ch.key.root + 3 : ch.key.root) % 12) * 7) % 12;
-    const ld = S.lead, avgN = ld.length ? ld.reduce((a, e) => a + e.n, 0) / ld.length : 70;
-    songMood = { minor: !!ch.key.minor, energy: E.reduce((a, b) => a + b, 0) / E.length, bpm: ch.bpm, bright: clamp((avgN - 58) / 24, 0, 1) };
-    if (want === 'auto') setTheme('auto');
-  }
-  function frame(jb, dt, opts) {
-    if (!ok || !S || mode !== 'timeline') return;
-    if (jb < S.last - 0.5 || jb > S.last + 8) { S.pL = firstAfter(S.lead, jb - 0.01); S.pB = firstAfter(S.bass, jb - 0.01); S.pD = firstAfter(S.drums, jb - 0.01); }
-    while (S.pL < S.lead.length && S.lead[S.pL].t <= jb) { const e = S.lead[S.pL++]; if (jb - e.t < 1) onNote(clamp((e.n - 58) / 28, 0, 1)); }
-    while (S.pB < S.bass.length && S.bass[S.pB].t <= jb) { const e = S.bass[S.pB++]; if (jb - e.t < 1) onBass(0.6); }
-    let big = false;
-    while (S.pD < S.drums.length && S.drums[S.pD].t <= jb) { const e = S.drums[S.pD++]; if (jb - e.t > 1) continue; if (e.n === 'ride' || e.n === 'tap') W.hit = Math.min(1, W.hit + 0.3); else if (e.n === 'swell') { W.swell = 1; big = true; } }
-    S.last = jb;
-    const ci = chordIdx(S.chords, Math.min(jb, S.lenJb)); if (ci !== S.ci) { onChord(S.chords[ci]); S.ci = ci; }
-    const bar = Math.max(0, Math.floor(jb / 4)), downbeat = bar !== S.bar && bar % 2 === 0; S.bar = bar;
-    const E = S.E[Math.min(S.E.length - 1, bar)] ?? 0.4, prevE = S.E[Math.max(0, Math.min(S.E.length - 1, bar - 4))] ?? E;
-    if (downbeat && bar % 4 === 0 && E - prevE > 0.22) big = true;
-    step(dt, { calm: !!opts.calm, level: E * 0.75 + (opts.level || 0) * 0.4, downbeat, big });
-  }
-  const LV = { chordKey: null, onT: 0, lvSlow: 0 };
-  const MD = { t: 0, lv: 0, br: 0, quiet: 0, bpm: 0, minor: false, decided: false, lastSwitch: -1e9 };
-  function moodTick(dt, f) {
-    if (!f.active) return; const lv = f.level || 0;
-    if (lv < 0.04) { MD.quiet += dt; if (MD.quiet > 2 && MD.t > 0) { MD.t = 0; MD.lv = 0; MD.br = 0; MD.bpm = 0; MD.decided = false; } return; }
-    MD.quiet = 0; MD.t += dt; MD.lv += lv * dt; MD.br += (f.pitch ?? 0.5) * dt; if ((f.tempoConf || 0) > 0.35) MD.bpm = f.bpm; if (f.keyRoot != null) MD.minor = !!f.keyMinor;
-    if (!MD.decided && MD.t > 18) { MD.decided = true; songMood = { energy: Math.min(1, MD.lv / MD.t * 1.3), bright: MD.br / MD.t, bpm: MD.bpm || 95, minor: MD.minor }; if (want === 'auto' && W.t - MD.lastSwitch > 40) { MD.lastSwitch = W.t; setTheme('auto'); } }
-  }
-  function liveMode() { if (!ok) return; mode = 'live'; S = null; songMood = null; LV.chordKey = null; }
-  function frameLive(dt, f, opts) {
-    if (!ok || mode !== 'live') return;
-    moodTick(dt, f); if (f.keyRoot != null) W.tonicCof = (((f.keyMinor ? f.keyRoot + 3 : f.keyRoot) % 12) * 7) % 12;
-    W.hit = Math.max(W.hit, f.hit || 0); W.swell = Math.max(W.swell, f.swell || 0);
-    let big = (f.swell || 0) > 0.8; LV.lvSlow += ((f.level || 0) - LV.lvSlow) * Math.min(1, dt * 0.15); if ((f.level || 0) - LV.lvSlow > 0.3) big = true;
-    LV.onT -= dt; for (const o of (f.onsets || [])) { if (LV.onT > 0) break; LV.onT = 0.12; onNote(o); }
-    if ((f.kickHit || 0) > 0) onBass(Math.min(1, f.kickHit));
-    const ck = f.chord ? f.chord.root + f.chord.q : null; if (ck !== LV.chordKey) { if (ck) onChord(f.chord); LV.chordKey = ck; }
-    const downbeat = (f.tempoConf || 0) > 0.4 && f.downbeatIn != null && f.downbeatIn < dt * 1.5;
-    step(dt, { calm: !!opts.calm, level: f.active ? (f.level || 0) : 0.35, downbeat, big });
-  }
-
-  return { init, load, frame, live: liveMode, frameLive, setBaseHue() {}, setTheme, setTime,
-    get themes() { return [{ key: 'auto', name: 'Auto' }].concat(SC_ORDER.map(k => ({ key: k, name: SCN[k].name }))); },
-    get times() { return [{ key: 'auto', name: 'Auto' }].concat(TOD_ORDER.map(k => ({ key: k, name: TOD[k].name }))); },
-    get theme() { return cur; }, get themeName() { return SCN[cur].name + ' · ' + TOD[curTod].name; }, get want() { return want; },
-    set letterbox(v) { W.letterbox = !!v; resize(); }, get mode() { return mode; }, get ok() { return ok; },
-    get hasKey() { return !!key(); }, setKey(k) { ls.set('vg.pexels', k ? k.trim() : null); for (const id in pools) delete pools[id]; showMsg(''); ensurePool(cur, curTod); },
-    _dbg() { return { W, pools, live, next, vids }; } };
-})();
-
-</script>
-<script>
 // ===== Listen: hears shared system audio and turns it into musical features for the world =====
 const Listen = (() => {
-  let ac = null, stream = null, an = null, src = null, onEnd = null;
+  let ac = null, stream = null, an = null, src = null, onEnd = null, el = null, kind = null;
   let spec, td, prevLog, sr = 48000, binHz = 11.7;
   const F = { active: false, level: 0, hit: 0, kick: 0, kickHit: 0, swell: 0, onsets: [], pitch: 0.5, chord: null, keyRoot: null, keyMinor: false, biome: 1, bpm: 0, tempoConf: 0, beatPulse: 0, downbeatIn: 1, barDur: 2, loud: 0 };
   let S;
@@ -1663,11 +659,26 @@ const Listen = (() => {
     if (!at.length) { stop(); throw new Error('No audio came through. Pick "Entire screen" and turn on "Share system audio".'); }
     stream.getVideoTracks().forEach(t => { t.enabled = false; t.onended = stop; });
     at[0].onended = stop;
-    ac = new (window.AudioContext || window.webkitAudioContext)();
-    sr = ac.sampleRate; src = ac.createMediaStreamSource(new MediaStream(at));
-    an = ac.createAnalyser(); an.fftSize = 4096; an.smoothingTimeConstant = 0; src.connect(an);
+    kind = 'share'; begin(ac2 => ac2.createMediaStreamSource(new MediaStream(at)));
+  }
+  // shared plumbing: build the analyser on any source node
+  function begin(makeSrc, audible) {
+    ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume();
+    sr = ac.sampleRate; src = makeSrc(ac);
+    an = ac.createAnalyser(); an.fftSize = 4096; an.smoothingTimeConstant = 0; src.connect(an); if (audible) src.connect(ac.destination);
     spec = new Float32Array(an.frequencyBinCount); td = new Float32Array(an.fftSize); prevLog = new Float32Array(an.frequencyBinCount);
     binHz = sr / an.fftSize; F.active = true; reset(); startLoop();
+  }
+  // microphone: works in any modern browser, hears the room (quality depends on speakers and mic)
+  async function startMic() {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser has no microphone access.');
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+    stream.getAudioTracks()[0].onended = stop; kind = 'mic'; begin(ac2 => ac2.createMediaStreamSource(stream));
+  }
+  // audio file: the most reliable source — plays through this page and is analysed directly
+  async function startFile(file) {
+    el = new Audio(); el.src = URL.createObjectURL(file); el.loop = true; el.crossOrigin = 'anonymous';
+    kind = 'file'; begin(ac2 => ac2.createMediaElementSource(el), true); el.play().catch(() => {}); return el;
   }
   // for testing: analyze any audio node instead of a shared screen
   function attachNode(context, node) { ac = context; sr = ac.sampleRate; an = ac.createAnalyser(); an.fftSize = 4096; an.smoothingTimeConstant = 0; node.connect(an); const z = ac.createGain(); z.gain.value = 0; an.connect(z); z.connect(ac.destination); spec = new Float32Array(an.frequencyBinCount); td = new Float32Array(an.fftSize); prevLog = new Float32Array(an.frequencyBinCount); binHz = sr / an.fftSize; F.active = true; reset(); startLoop(); }
@@ -1675,6 +686,7 @@ const Listen = (() => {
     try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {}
     try { src && src.disconnect(); } catch (e) {}
     try { ac && ac.close(); } catch (e) {}
+    try { if (el) { el.pause(); URL.revokeObjectURL(el.src); } } catch (e) {} el = null; kind = null;
     clearInterval(loopT); stream = null; ac = null; an = null; F.active = false; reset(); onEnd && onEnd();
   }
 
@@ -1780,17 +792,18 @@ const Listen = (() => {
     F.tempoConf += (conf - F.tempoConf) * 0.4; F.bpm = 60 / S.period;
   }
 
-  return { start, stop, update, reset, attachNode, F, get active() { return F.active; }, set onEnd(fn) { onEnd = fn; } };
+  return { start, startMic, startFile, stop, update, reset, attachNode, F, get active() { return F.active; }, get kind() { return kind; }, get audio() { return el; }, set onEnd(fn) { onEnd = fn; } };
 })();
 
 </script>
-<script>
+<script type="module" src="js/world.js"></script>
+<script type="module">
 // ===== App =====
 (() => {
   const $ = id => document.getElementById(id);
-  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, engine: 'footage' };
+  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, orb: false };
   try { Object.assign(S, JSON.parse(localStorage.getItem('vibegen.settings') || '{}')); } catch (e) {}
-  const VIS = S.engine === '3d' || typeof Reel === 'undefined' ? (typeof World !== 'undefined' ? World : null) : Reel;
+  const VIS = window.World || null;
   const save = () => { try { localStorage.setItem('vibegen.settings', JSON.stringify(S)); } catch (e) {} };
   const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   let toastT; function toast(m) { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 4200); }
@@ -1860,8 +873,8 @@ const Listen = (() => {
       $('art').style.backgroundImage = '';
     } else {
       $('eyebrow').textContent = Listen.active ? wn() + ' · listening live' : wn();
-      $('song').textContent = Listen.active ? 'Following your music' : 'Play something, then share its audio';
-      $('meta').textContent = Listen.active ? (F.tempoConf > 0.35 ? `~${Math.round(F.bpm)} bpm` : 'Finding the beat…') : 'Press Share audio, choose your screen, tick system audio. Or open the Library for a jazz cover.';
+      $('song').textContent = Listen.active ? 'Following your music' : 'Pick a music source to begin';
+      $('meta').textContent = Listen.active ? (F.tempoConf > 0.35 ? `~${Math.round(F.bpm)} bpm` : 'Finding the beat…') : 'Pick a music source: an audio file, a shared tab, or the mic. Or open the Library for a jazz cover.';
       $('art').style.backgroundImage = '';
     }
   }
@@ -1932,20 +945,23 @@ const Listen = (() => {
 
   // ---------- listening ----------
   Listen.onEnd = () => { paintListen(); paintHeader(); };
-  function paintListen() { $('listenBtn').classList.toggle('listening', Listen.active); $('listenLbl').textContent = Listen.active ? 'Listening' : 'Share audio'; }
+  function paintListen() { $('listenBtn').classList.toggle('listening', Listen.active); $('listenLbl').textContent = Listen.active ? ({ file: 'Playing file', mic: 'Mic on', share: 'Listening' }[Listen.kind] || 'Listening') + ' · stop' : 'Music source'; }
   async function shareNow() {
     $('shareHelp').hidden = true; S.shareSeen = true; save();
     try { await Listen.start(); toast('Listening. The world now follows the music.'); } catch (e) { if (e.name !== 'NotAllowedError') toast(e.message); else toast('Sharing was cancelled.'); }
     paintListen(); paintHeader();
   }
-  $('listenBtn').onclick = () => { if (Listen.active) { Listen.stop(); paintListen(); paintHeader(); return; } if (!S.shareSeen) $('shareHelp').hidden = false; else shareNow(); };
-  $('shareGo').onclick = shareNow; $('shareCancel').onclick = () => $('shareHelp').hidden = true;
+  const srcStart = async fn => { $('shareHelp').hidden = true; if (mode === 'cover') coverStop(); try { if (Listen.active) Listen.stop(); await fn(); toast('Listening. The world now follows the music.'); } catch (e) { toast(e.name === 'NotAllowedError' ? 'Permission was declined.' : e.message); } paintListen(); paintHeader(); };
+  $('listenBtn').onclick = () => { if (Listen.active) { Listen.stop(); paintListen(); paintHeader(); return; } $('shareHelp').hidden = false; };
+  $('micGo').onclick = () => srcStart(() => Listen.startMic());
+  $('audioFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) srcStart(() => Listen.startFile(f)); };
+  $('shareGo').onclick = () => srcStart(() => Listen.start()); $('shareCancel').onclick = () => $('shareHelp').hidden = true;
 
   // ---------- settings ----------
   function syncControls() {
     for (const b of $('leadSeg').children) b.classList.toggle('on', b.dataset.v === S.lead);
     for (const b of $('reSeg').children) b.classList.toggle('on', +b.dataset.v === S.reharm);
-    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); $('nextBtn').classList.toggle('on', S.next);
+    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); $('orbBtn').classList.toggle('on', S.orb); $('nextBtn').classList.toggle('on', S.next);
     for (const b of $('worldSeg').children) b.classList.toggle('on', b.dataset.v === S.world);
     for (const b of $('todSeg').children) b.classList.toggle('on', b.dataset.v === S.tod);
     $('barsBtn').classList.toggle('on', S.bars);
@@ -1956,12 +972,7 @@ const Listen = (() => {
     $('vol').value = S.vol; $('volOut').textContent = S.vol + '%';
     for (const id of ['tempo', 'swing', 'vol']) { const el = $(id); el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); }
   }
-  for (const b of $('engSeg').children) b.classList.toggle('on', b.dataset.v === S.engine);
-  $('engSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || v === S.engine) return; S.engine = v; save(); location.reload(); };
-  const pxSave = (inp) => { const v = inp.value.trim(); if (v.length < 20) { toast("That doesn't look like an API key."); return false; } if (VIS && VIS.setKey) VIS.setKey(v); toast('Key saved. Loading footage…'); return true; };
-  $('pxSaveBtn').onclick = () => pxSave($('pxKey'));
-  $('pxGo').onclick = () => { if (pxSave($('pxKey2'))) $('pxHelp').hidden = true; };
-  $('pxLater').onclick = () => { $('pxHelp').hidden = true; };
+  $('orbBtn').onclick = () => { S.orb = !S.orb; save(); if (VIS) VIS.orb = S.orb; syncControls(); };
   $('todSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.tod = v; save(); VIS.setTime(v); syncControls(); paintHeader(); };
   $('barsBtn').onclick = () => { S.bars = !S.bars; save(); if (VIS && VIS.ok) VIS.letterbox = S.bars; syncControls(); };
   $('worldSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.world = v; save(); VIS.setTheme(v); syncControls(); setTimeout(paintHeader, 1300); };
@@ -2016,7 +1027,7 @@ const Listen = (() => {
     if (!VIS || !VIS.ok) { paintTime(); return; }
     if (mode === 'cover' && cover) {
       if (g && cPlaying) { g.analyser.getFloatTimeDomainData(buf); let s2 = 0; for (let i = 0; i < buf.length; i++) s2 += buf[i] * buf[i]; level += (Math.min(1, Math.sqrt(s2 / buf.length) * 5) - level) * 0.1; } else level *= 0.95;
-      const jb = curJb(); VIS.frame(jb, dt, { calm: S.mellow, level });
+      const jb = curJb(); VIS.frame(jb, dt, { calm: S.mellow, level, spj: spj(), playing: cPlaying });
       const ch = cover.arr.chords, i = ch.indexOf(Engine.chordAt(ch, Math.min(jb, cover.chart.lenJb))); paintChord(ch[i], ch[i + 1], cover.chart.names, false);
     } else {
       if (VIS.mode !== 'live') VIS.live();
@@ -2028,6 +1039,7 @@ const Listen = (() => {
       VIS.frameLive(dt, f, { calm: S.mellow });
       paintChord(Listen.active ? F.chord : null, null, SHARPS, true);
     }
+    document.body.classList.toggle('loading', !!VIS && !VIS.ready);
     renderSheet(false); paintTime();
     document.body.classList.toggle('live', mode !== 'cover');
     metaT += dt; if (metaT > 1) { metaT = 0; if (mode !== 'cover') paintHeader(); }
@@ -2039,8 +1051,7 @@ const Listen = (() => {
   // ---------- boot ----------
   (async () => {
     try { if (VIS) VIS.init($('gl')); else toast('The 3D engine could not load. Music still plays.'); } catch (e) { console.error(e); toast('3D is not supported on this device. Music still plays.'); }
-    if (VIS && VIS.ok) { $('worldSeg').innerHTML = VIS.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = VIS.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); VIS.setTime(S.tod); VIS.letterbox = S.bars; VIS.setTheme(S.world); VIS.live(); }
-    if (VIS && VIS.setKey) { $('pxField').hidden = false; if (!VIS.hasKey) $('pxHelp').hidden = false; else $('pxKey').placeholder = 'Key saved'; }
+    if (VIS && VIS.ok) { $('worldSeg').innerHTML = VIS.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = VIS.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); VIS.setTime(S.tod); VIS.letterbox = S.bars; VIS.setTheme(S.world); VIS.orb = S.orb; VIS.live(); }
     await DB.open(); library = await DB.all(); renderCovers();
     syncControls(); paintHeader(); paintListen(); requestAnimationFrame(frame);
     paintHeader();
