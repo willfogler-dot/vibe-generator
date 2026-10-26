@@ -161,6 +161,11 @@ body.live .transport { display: none; }
 
 <section class="drawer right" id="settings" hidden aria-label="Settings">
   <h2>Settings</h2>
+  <div class="field"><h3>Picture</h3>
+    <div class="seg" id="engSeg"><button class="btn" type="button" data-v="footage">Real footage</button><button class="btn" type="button" data-v="3d">3D world</button></div></div>
+  <div class="field" id="pxField" hidden><h3>Pexels key</h3>
+    <div class="row"><input type="text" id="pxKey" placeholder="Paste your Pexels API key" autocomplete="off" spellcheck="false" style="flex:1;min-width:0"><button class="btn" type="button" id="pxSaveBtn">Save</button></div>
+    <div class="hint">Footage comes from <a href="https://www.pexels.com" target="_blank" rel="noopener" style="color:var(--amber)">Pexels</a>, free. Each clip is credited on screen.</div></div>
   <div class="field"><h3>Scene</h3>
     <div class="seg" id="worldSeg"></div>
     <div class="hint">Auto picks the landscape from the mood of the song.</div></div>
@@ -188,6 +193,19 @@ body.live .transport { display: none; }
     </ol>
     <div class="hint">Nothing is recorded or sent anywhere. The page only measures the sound to drive the visuals. Stop anytime from this button or the browser's sharing bar.</div>
     <div class="row"><button class="btn primary" type="button" id="shareGo">Share now</button><button class="btn" type="button" id="shareCancel">Cancel</button></div>
+  </div>
+</div>
+<div class="modal" id="pxHelp" hidden>
+  <div class="card" role="dialog" aria-labelledby="pxTitle">
+    <h2 id="pxTitle">One free key for real footage</h2>
+    <ol>
+      <li>Open <a href="https://www.pexels.com/api/" target="_blank" rel="noopener">pexels.com/api</a> and sign up (free, about a minute).</li>
+      <li>When it asks what it's for, something like "personal music visualizer" works.</li>
+      <li>Copy your API key and paste it here.</li>
+    </ol>
+    <input type="text" id="pxKey2" placeholder="Pexels API key" autocomplete="off" spellcheck="false">
+    <div class="hint">The key stays in this browser. Until then the picture stays dark. You can also switch to the 3D world in Settings.</div>
+    <div class="row"><button class="btn primary" type="button" id="pxGo">Start footage</button><button class="btn" type="button" id="pxLater">Later</button></div>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -1353,6 +1371,262 @@ const World = (() => {
 
 </script>
 <script>
+// ===== Reel: music TV from real footage (Pexels), directed to the beat =====
+const Reel = (() => {
+  const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
+  const R = (a, b) => a + (b - a) * Math.random(), pick = a => a[Math.floor(Math.random() * a.length)], clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+
+  // Real places that already look like fantasy. Each scene has calm / mid / epic shot pools; time of day swaps in its own versions.
+  const SCN = {
+    valley: { name: 'Green Valleys', q: { calm: ['iceland landscape aerial', 'green valley fog'], mid: ['faroe islands aerial', 'scotland highlands aerial'], epic: ['iceland waterfall drone', 'canyon river aerial'] } },
+    highlands: { name: 'Mountains', q: { calm: ['mountain clouds timelapse', 'alpine lake reflection'], mid: ['dolomites aerial', 'swiss alps aerial'], epic: ['snowy mountains drone', 'mountain peaks above clouds'] } },
+    forest: { name: 'Enchanted Forest', q: { calm: ['misty forest', 'forest sunbeams'], mid: ['foggy forest aerial', 'mossy forest stream'], epic: ['rainforest waterfall aerial', 'forest canopy fog drone'] } },
+    coast: { name: 'Coastline', q: { calm: ['ocean waves slow motion', 'sea cliffs calm'], mid: ['sea cliffs aerial', 'rugged coastline drone'], epic: ['waves crashing rocks', 'big ocean waves aerial'] } }
+  };
+  const NIGHT = { calm: ['milky way timelapse', 'starry sky timelapse'], mid: ['aurora borealis', 'northern lights timelapse'], epic: ['aurora borealis dancing', 'night sky stars mountains timelapse'] };
+  const TOD = {
+    dawn: { name: 'Dawn', add: ' sunrise', grade: { b: 1.0, c: 1.04, s: 1.05, sep: 0.1, hue: -3 } },
+    day: { name: 'Midday', add: '', grade: { b: 1.0, c: 1.06, s: 1.08, sep: 0, hue: 0 } },
+    golden: { name: 'Golden Hour', add: ' sunset', grade: { b: 1.02, c: 1.06, s: 1.12, sep: 0.16, hue: -4 } },
+    dusk: { name: 'Dusk', add: ' twilight', grade: { b: 0.94, c: 1.06, s: 0.95, sep: 0.06, hue: -8 } },
+    night: { name: 'Night', add: null, grade: { b: 0.95, c: 1.08, s: 1.0, sep: 0, hue: 4 } }
+  };
+  const SC_ORDER = ['valley', 'highlands', 'forest', 'coast'], TOD_ORDER = ['dawn', 'day', 'golden', 'dusk', 'night'];
+  function clockTod() { const d = new Date(), h = d.getHours() + d.getMinutes() / 60; return h >= 5 && h < 8 ? 'dawn' : h >= 8 && h < 16.5 ? 'day' : h >= 16.5 && h < 19 ? 'golden' : h >= 19 && h < 20.5 ? 'dusk' : 'night'; }
+
+  let ok = false, mode = 'none', want = 'auto', cur = 'valley', wantTod = 'auto', curTod = 'day', songMood = null, status = '';
+  let root, layer, vids = [], live = null, next = null, fx, ctx, grain, bars, flash, credit, msg;
+  const W = { t: 0, level: 0.3, kick: 0, hit: 0, swell: 0, hue: 0, hueT: 0, wash: 0, washHue: 0, calm: false, letterbox: true, shotT: 0, shotLen: 6, lastBig: -99, streakT: 0, recent: [], kb: null };
+  const pools = {}, fetching = {};
+
+  // ---------- Pexels ----------
+  const key = () => ls.get('vg.pexels');
+  function bestFile(v) {
+    const want = Math.min(1920, Math.max(1280, innerWidth * (devicePixelRatio || 1) * 0.9));
+    const files = (v.video_files || []).filter(f => f.file_type === 'video/mp4' && f.width >= f.height && f.width >= 1000);
+    files.sort((a, b) => a.width - b.width);
+    return files.find(f => f.width >= want) || files[files.length - 1] || null;
+  }
+  async function search(q) {
+    const r = await fetch('https://api.pexels.com/videos/search?' + new URLSearchParams({ query: q, orientation: 'landscape', size: 'medium', per_page: '40' }), { headers: { Authorization: key() } });
+    if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Pexels rejected the API key. Check it in Settings.'), { fatal: true });
+    if (r.status === 429) throw Object.assign(new Error('Pexels hourly limit reached. Footage resumes within the hour.'), { fatal: true });
+    if (!r.ok) throw new Error('Pexels error ' + r.status);
+    return (await r.json()).videos || [];
+  }
+  function queriesFor(scene, tod) {
+    const T = TOD[tod], base = SCN[scene].q;
+    if (T.add == null) { const extra = { valley: 'iceland night aurora', highlands: 'mountains night stars', forest: 'forest night moonlight', coast: 'ocean night moon' }[scene]; return { calm: NIGHT.calm, mid: NIGHT.mid.concat([extra]), epic: NIGHT.epic }; }
+    const o = {}; for (const t of ['calm', 'mid', 'epic']) o[t] = base[t].map((q, i) => i === 0 && T.add ? q + T.add : q); return o;
+  }
+  async function ensurePool(scene, tod) {
+    const id = scene + ':' + tod; if (pools[id] && pools[id].items.length) return pools[id]; if (fetching[id]) return fetching[id];
+    if (!key()) { status = 'nokey'; showMsg('Add your free Pexels key in Settings to start the footage.'); return null; }
+    try { const c = JSON.parse(ls.get('vg.px.' + id) || 'null'); if (c && Date.now() - c.t < 36e5 * 24 && c.items.length > 12) return (pools[id] = c); } catch (e) {}
+    const P = pools[id] = { t: Date.now(), items: [] }, Q = queriesFor(scene, tod), seen = new Set();
+    fetching[id] = (async () => {
+      for (const tier of ['mid', 'calm', 'epic']) for (const q of Q[tier]) {
+        try {
+          const vs = await search(q);
+          for (const v of vs) { if (seen.has(v.id) || v.duration < 7) continue; const f = bestFile(v); if (!f) continue; seen.add(v.id);
+            P.items.push({ id: v.id, tier, q: q.replace(/ (sunrise|sunset|twilight)$/, ''), dur: v.duration, src: f.link, by: v.user?.name || 'Pexels', url: v.url }); }
+          if (P.items.length && !live) startFirst();
+        } catch (e) { if (e.fatal) { showMsg(e.message); break; } if (e instanceof TypeError) { showMsg('The browser could not reach Pexels. Check your connection or network filter.'); break; } }
+      }
+      if (P.items.length > 12) ls.set('vg.px.' + id, JSON.stringify(P));
+      delete fetching[id]; return P;
+    })();
+    return fetching[id];
+  }
+
+  // ---------- DOM ----------
+  function el(tag, css, parent) { const e = document.createElement(tag); e.style.cssText = css; (parent || root).appendChild(e); return e; }
+  function init(cv) {
+    cv.style.display = 'none';
+    root = document.createElement('div'); root.id = 'reel'; root.style.cssText = 'position:fixed;inset:0;background:#000;overflow:hidden;z-index:0';
+    document.body.insertBefore(root, document.body.firstChild);
+    layer = el('div', 'position:absolute;inset:0;will-change:filter');
+    for (let i = 0; i < 3; i++) { const v = el('video', 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;will-change:transform,opacity;transform-origin:50% 50%', layer);
+      v.muted = true; v.playsInline = true; v.preload = 'auto'; v.loop = true; v.setAttribute('aria-hidden', 'true'); vids.push({ v, ready: false, clip: null }); }
+    fx = el('canvas', 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none'); ctx = fx.getContext('2d');
+    el('div', 'position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(0,0,0,.55) 100%)');
+    { const c = document.createElement('canvas'); c.width = c.height = 160; const x = c.getContext('2d'), d = x.createImageData(160, 160); for (let i = 0; i < d.data.length; i += 4) { const n = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = n; d.data[i + 3] = 255; } x.putImageData(d, 0, 0);
+      grain = el('div', `position:absolute;inset:-160px;pointer-events:none;opacity:.07;mix-blend-mode:overlay;background:url(${c.toDataURL()})`); }
+    flash = el('div', 'position:absolute;inset:0;pointer-events:none;background:#fff;opacity:0');
+    bars = [el('div', 'position:absolute;left:0;right:0;top:0;background:#000;pointer-events:none'), el('div', 'position:absolute;left:0;right:0;bottom:0;background:#000;pointer-events:none')];
+    credit = el('a', 'position:absolute;right:20px;font:500 11px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;color:rgba(243,232,214,.75);text-decoration:none;opacity:0;transition:opacity .8s;text-shadow:0 1px 8px rgba(0,0,0,.8);z-index:2');
+    credit.target = '_blank'; credit.rel = 'noopener';
+    msg = el('div', 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(460px,calc(100vw - 32px));text-align:center;font:500 15px/1.5 "Instrument Sans",system-ui,sans-serif;color:#f3e8d6;opacity:0;transition:opacity .6s');
+    resize(); addEventListener('resize', resize);
+    applyTod(wantTod === 'auto' ? clockTod() : wantTod);
+    ok = true; ensurePool(cur, curTod);
+  }
+  function resize() {
+    if (!fx) return; fx.width = Math.round(innerWidth / 2); fx.height = Math.round(innerHeight / 2);
+    const bh = W.letterbox && innerWidth / innerHeight > 1.3 ? Math.max(0, (innerHeight - innerWidth / 2.1) / 2) : 0;
+    bars[0].style.height = bars[1].style.height = bh + 'px'; credit.style.bottom = Math.max(14, bh / 2 - 8) + 'px';
+  }
+  function showMsg(t) { if (!msg) return; msg.textContent = t || ''; msg.style.opacity = t ? 1 : 0; }
+
+  // ---------- shots ----------
+  function tierNow() { const lv = W.level, r = Math.random(); let t = lv < 0.36 ? 'calm' : lv < 0.64 ? 'mid' : 'epic'; if (r < 0.22) t = t === 'calm' ? 'mid' : t === 'epic' ? 'mid' : pick(['calm', 'epic']); return W.calm && t === 'epic' ? 'mid' : t; }
+  function chooseClip() {
+    const P = pools[cur + ':' + curTod] || Object.values(pools).find(p => p.items.length); if (!P || !P.items.length) return null;
+    const tier = tierNow(); let c = P.items.filter(x => x.tier === tier && !W.recent.includes(x.id)); if (!c.length) c = P.items.filter(x => !W.recent.includes(x.id)); if (!c.length) c = P.items;
+    const clip = pick(c); W.recent.push(clip.id); if (W.recent.length > Math.min(30, P.items.length - 2)) W.recent.shift(); return clip;
+  }
+  function prep(slot) {
+    const clip = chooseClip(); if (!clip) return; slot.ready = false; slot.clip = clip; slot.seekTo = null;
+    const v = slot.v; v.onloadedmetadata = () => { const d = v.duration || clip.dur; slot.seekTo = R(0.4, Math.max(0.5, d - 9)); v.currentTime = slot.seekTo; };
+    v.onseeked = () => { if (slot.clip === clip) slot.ready = true; };
+    v.onerror = () => { if (slot.clip === clip) setTimeout(() => prep(slot), 300); };
+    v.src = clip.src; v.load();
+  }
+  let fading = null, starting = false;
+  function freeSlot() { return vids.find(s => s !== live && s !== next && s !== fading) || vids.find(s => s !== live && s !== next); }
+  function startFirst() { showMsg(''); if (live || starting) return; starting = true; next = freeSlot(); prep(next); const wait = () => { if (next && next.ready) cut(true); else setTimeout(wait, 150); }; wait(); }
+  function cut(first, big) {
+    if (!next || !next.ready) return false;
+    const old = live; live = next; next = null;
+    const fade = !first && (W.calm || big === 'fade'); const v = live.v;
+    v.playbackRate = W.calm ? 0.8 : W.level < 0.36 ? 0.85 : 1; v.play().catch(() => {});
+    v.style.transition = fade ? 'opacity .7s ease' : 'none'; v.style.zIndex = 2; v.style.opacity = 1;
+    if (old) { old.v.style.zIndex = 1; fading = old; setTimeout(() => { if (old !== live) { old.v.style.opacity = 0; old.v.pause(); } if (fading === old) fading = null; }, fade ? 750 : 30); }
+    W.shotT = 0; W.shotLen = shotLength(); const z = Math.random() < 0.5; W.kb = { s0: z ? R(1.03, 1.06) : R(1.09, 1.13), s1: z ? R(1.09, 1.13) : R(1.03, 1.06), x0: R(-1.5, 1.5), y0: R(-1, 1), x1: R(-1.5, 1.5), y1: R(-1, 1), leak: pick([[0.1, 0.05], [0.9, 0.08], [0.85, 0.9], [0.12, 0.85]]) };
+    if (big && !W.calm) flash.style.transition = 'none', flash.style.opacity = 0.35, requestAnimationFrame(() => { flash.style.transition = 'opacity .9s ease-out'; flash.style.opacity = 0; });
+    const c = live.clip; credit.textContent = cap(c.q) + '  ·  Video by ' + c.by + ' on Pexels'; credit.href = c.url; credit.style.opacity = 1; W.creditT = 3.5;
+    next = freeSlot(); prep(next); return true;
+  }
+  const cap = s => s.replace(/\b(aerial|drone|timelapse|slow motion|dancing|calm)\b/g, '').replace(/\s+/g, ' ').trim().replace(/^./, m => m.toUpperCase());
+  function shotLength() { const lv = W.level; let s = lv < 0.36 ? R(7, 11) : lv < 0.64 ? R(5, 8) : R(3.5, 6); return W.calm ? s * 1.5 : s; }
+
+  // ---------- music → picture ----------
+  const motes = [], streaks = [];
+  for (let i = 0; i < 90; i++) motes.push({ x: Math.random(), y: Math.random(), z: R(0.3, 1), ph: R(0, 6.28), s: R(0.6, 1.6) });
+  function onNote(pitch) { W.streakT -= 1; if (W.streakT > 0 || streaks.length > 7) return; W.streakT = W.calm ? 4 : 2;
+    const fromL = Math.random() < 0.5; streaks.push({ x: fromL ? -0.05 : 1.05, y: clamp(0.75 - pitch * 0.55 + R(-0.1, 0.1), 0.15, 0.85), vx: (fromL ? 1 : -1) * R(0.18, 0.3), vy: R(-0.03, 0.03), a: 0, spin: R(1.5, 4) * (Math.random() < 0.5 ? 1 : -1), curl: Math.random() < 0.45, pts: [], age: 0, life: R(2.6, 3.8) }); }
+  function onBass(v) { W.kick = Math.min(1, W.kick + 0.7 * v); }
+  function onChord(c) { if (!c) return; const off = ((((c.root * 7) % 12) - (W.tonicCof || 0) + 18) % 12) - 6; W.hueT = off * 0.9; W.wash = 0.06; W.washHue = (off * 30 + 360) % 360; }
+  function drawFx(dt) {
+    const w = fx.width, h = fx.height; ctx.clearRect(0, 0, w, h); ctx.globalCompositeOperation = 'lighter';
+    // light leak that breathes with the bass
+    const k = W.kb ? W.kb.leak : [0.9, 0.08], night = curTod === 'night', warm = night ? '150,180,255' : curTod === 'day' ? '255,235,200' : '255,170,90';
+    const la = (night ? 0.05 : 0.1) + (W.calm ? 0.06 : 0.16) * W.kick + 0.1 * W.swell; const g = ctx.createRadialGradient(k[0] * w, k[1] * h, 0, k[0] * w, k[1] * h, w * 0.75);
+    g.addColorStop(0, `rgba(${warm},${la})`); g.addColorStop(1, `rgba(${warm},0)`); ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    if (W.wash > 0.003) { ctx.fillStyle = `hsla(${W.washHue},70%,60%,${W.wash})`; ctx.fillRect(0, 0, w, h); }
+    // dust in the light by day, fireflies at night
+    const ff = night || curTod === 'dusk';
+    for (const m of motes) {
+      m.x += (Math.sin(W.t * 0.3 + m.ph) * 0.004 + 0.003 * m.z) * dt; m.y += (Math.cos(W.t * 0.25 + m.ph) * 0.004 - (ff ? 0.002 : 0.004) * m.z) * dt;
+      if (m.x > 1.05) m.x = -0.05; if (m.x < -0.05) m.x = 1.05; if (m.y < -0.05) m.y = 1.05; if (m.y > 1.05) m.y = -0.05;
+      const bl = ff ? Math.max(0, Math.sin(W.t * 1.3 + m.ph * 5)) ** 3 : 0.5 + 0.5 * Math.sin(W.t * 0.8 + m.ph);
+      const a = (ff ? 0.75 : 0.18 + 0.25 * W.level) * bl * m.z + W.hit * 0.15 * m.z; if (a < 0.01) continue;
+      const r = (ff ? 2.2 : 1.3) * m.s * m.z; ctx.fillStyle = ff ? `rgba(210,255,140,${a})` : `rgba(255,245,220,${a})`; ctx.beginPath(); ctx.arc(m.x * w, m.y * h, r, 0, 6.283); ctx.fill();
+      if (ff) { ctx.fillStyle = `rgba(210,255,140,${a * 0.18})`; ctx.beginPath(); ctx.arc(m.x * w, m.y * h, r * 4, 0, 6.283); ctx.fill(); }
+    }
+    // wind streaks drawn by the melody
+    ctx.lineCap = 'round';
+    for (let i = streaks.length - 1; i >= 0; i--) {
+      const s = streaks[i]; s.age += dt; if (s.age > s.life + 1) { streaks.splice(i, 1); continue; }
+      if (s.age < s.life) { if (s.curl && s.age > s.life * 0.35 && s.age < s.life * 0.6) { const a = s.spin * dt, c = Math.cos(a), sn = Math.sin(a), vx = s.vx * c - s.vy * sn * (w / h), vy = s.vx * sn * (h / w) + s.vy * c; s.vx = vx; s.vy = vy; }
+        s.vy += Math.sin(s.age * 2.5) * 0.01 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.pts.push([s.x * w, s.y * h]); if (s.pts.length > 34) s.pts.shift(); }
+      else if (s.pts.length) s.pts.shift();
+      const P = s.pts, n = P.length; if (n < 2) continue; const fade = Math.min(1, s.age / 0.4) * (s.age > s.life ? Math.max(0, 1 - (s.age - s.life)) : 1);
+      for (let j = 1; j < n; j++) { const t = j / n; ctx.strokeStyle = `rgba(255,255,255,${0.55 * t * fade})`; ctx.lineWidth = 0.4 + 1.6 * Math.sin(Math.PI * t); ctx.beginPath(); ctx.moveTo(P[j - 1][0], P[j - 1][1]); ctx.lineTo(P[j][0], P[j][1]); ctx.stroke(); }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---------- per frame ----------
+  function step(dt, M) {
+    if (!ok) return; W.t += dt; W.calm = M.calm;
+    if (wantTod === 'auto' && Math.floor(W.t) % 30 === 0 && Math.floor(W.t - dt) % 30 !== 0) { const k = clockTod(); if (k !== curTod) setTime('auto'); }
+    W.level += (M.level - W.level) * Math.min(1, dt * 0.6);
+    W.kick *= Math.exp(-dt * 5); W.hit *= Math.exp(-dt * 5); W.swell *= Math.exp(-dt * 0.8); W.wash *= Math.exp(-dt * 1.5); W.hue += (W.hueT - W.hue) * Math.min(1, dt * 0.8);
+    W.shotT += dt;
+    if (live) {
+      const wantCut = (M.big && W.shotT > 2.5 && W.t - W.lastBig > 12) ? 'big' : (W.shotT > W.shotLen && (M.downbeat || W.shotT > W.shotLen + 3)) ? 'beat' : null;
+      if (wantCut) { if (wantCut === 'big') W.lastBig = W.t; cut(false, wantCut === 'big' ? (W.calm ? 'fade' : true) : (W.calm ? 'fade' : false)); }
+      const kb = W.kb, p = clamp(W.shotT / Math.max(3, W.shotLen + 2), 0, 1), s = (kb.s0 + (kb.s1 - kb.s0) * p) * (1 + (W.calm ? 0 : W.kick * 0.01));
+      live.v.style.transform = `translate(${kb.x0 + (kb.x1 - kb.x0) * p}%,${kb.y0 + (kb.y1 - kb.y0) * p}%) scale(${s.toFixed(4)})`;
+      const lr = W.calm ? 0.8 : W.level < 0.36 ? 0.85 : 1; if (Math.abs(live.v.playbackRate - lr) > 0.05) live.v.playbackRate = lr;
+    }
+    const G = TOD[curTod].grade, lv = W.level;
+    layer.style.filter = `brightness(${(G.b * (1 + W.swell * 0.06 + (W.calm ? 0 : W.kick * 0.03))).toFixed(3)}) contrast(${(G.c + lv * 0.05).toFixed(3)}) saturate(${(G.s + lv * 0.08).toFixed(3)}) sepia(${G.sep}) hue-rotate(${(G.hue + W.hue).toFixed(1)}deg)`;
+    grain.style.transform = `translate(${Math.floor(Math.random() * 160)}px,${Math.floor(Math.random() * 160)}px)`;
+    if (W.creditT > 0) { W.creditT -= dt; if (W.creditT <= 0) credit.style.opacity = 0; }
+    drawFx(dt);
+  }
+
+  // ---------- drivers (same contract as the 3D world) ----------
+  let S = null;
+  function chordIdx(chords, t) { let lo = 0, hi = chords.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (chords[m].s <= t + 1e-6) lo = m; else hi = m - 1; } return lo; }
+  function firstAfter(ev, t) { let lo = 0, hi = ev.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ev[m].t < t) lo = m + 1; else hi = m; } return lo; }
+  function resolveAuto() {
+    const m = songMood; if (!m) return cur;
+    const e = m.energy, b = m.bright ?? 0.5, fast = clamp(((m.bpm || 95) - 95) / 40, 0, 1), slow = clamp((95 - (m.bpm || 95)) / 30, 0, 1), mi = m.minor ? 1 : 0;
+    const sc = { valley: 0.6 + 0.3 * (1 - Math.abs(e - 0.45) * 2) + 0.2 * slow, highlands: 0.9 * e + 0.3 * fast, forest: 0.6 * mi + 0.4 * (1 - b), coast: 0.5 * b + 0.4 * (1 - mi) + 0.3 * fast };
+    let best = 'valley'; for (const k of SC_ORDER) if (sc[k] > sc[best]) best = k; return best;
+  }
+  function setTheme(k) { want = k; const key2 = k === 'auto' ? resolveAuto() : k; if (key2 === cur) return; cur = key2; W.recent = []; ensurePool(cur, curTod).then(() => { if (next && !next.ready) prep(next); }); if (next) prep(next); }
+  function applyTod(k) { curTod = k; }
+  function setTime(k) { wantTod = k; const t = k === 'auto' ? clockTod() : k; if (t === curTod && ok) return; applyTod(t); if (!ok) return; W.recent = []; ensurePool(cur, curTod).then(() => { if (next) prep(next); }); if (next) prep(next); }
+  function load(song, arr) {
+    if (!ok) return; mode = 'timeline';
+    const ch = song.chart, E = ch.energy.length ? ch.energy : [0.5];
+    const sm = E.map((_, i) => { let a = 0, n = 0; for (let j = i - 2; j <= i + 2; j++) if (E[j] != null) { a += E[j]; n++; } return a / n; });
+    S = { E: sm, chords: arr.chords, lenJb: ch.lenJb, endJb: arr.endJb, lead: arr.events.filter(e => e.k === 'lead' && e.d > 0.09), bass: arr.events.filter(e => e.k === 'bass'), drums: arr.events.filter(e => e.k === 'drum'), pL: 0, pB: 0, pD: 0, last: -1, ci: -1, bar: -1 };
+    W.tonicCof = (((ch.key.minor ? ch.key.root + 3 : ch.key.root) % 12) * 7) % 12;
+    const ld = S.lead, avgN = ld.length ? ld.reduce((a, e) => a + e.n, 0) / ld.length : 70;
+    songMood = { minor: !!ch.key.minor, energy: E.reduce((a, b) => a + b, 0) / E.length, bpm: ch.bpm, bright: clamp((avgN - 58) / 24, 0, 1) };
+    if (want === 'auto') setTheme('auto');
+  }
+  function frame(jb, dt, opts) {
+    if (!ok || !S || mode !== 'timeline') return;
+    if (jb < S.last - 0.5 || jb > S.last + 8) { S.pL = firstAfter(S.lead, jb - 0.01); S.pB = firstAfter(S.bass, jb - 0.01); S.pD = firstAfter(S.drums, jb - 0.01); }
+    while (S.pL < S.lead.length && S.lead[S.pL].t <= jb) { const e = S.lead[S.pL++]; if (jb - e.t < 1) onNote(clamp((e.n - 58) / 28, 0, 1)); }
+    while (S.pB < S.bass.length && S.bass[S.pB].t <= jb) { const e = S.bass[S.pB++]; if (jb - e.t < 1) onBass(0.6); }
+    let big = false;
+    while (S.pD < S.drums.length && S.drums[S.pD].t <= jb) { const e = S.drums[S.pD++]; if (jb - e.t > 1) continue; if (e.n === 'ride' || e.n === 'tap') W.hit = Math.min(1, W.hit + 0.3); else if (e.n === 'swell') { W.swell = 1; big = true; } }
+    S.last = jb;
+    const ci = chordIdx(S.chords, Math.min(jb, S.lenJb)); if (ci !== S.ci) { onChord(S.chords[ci]); S.ci = ci; }
+    const bar = Math.max(0, Math.floor(jb / 4)), downbeat = bar !== S.bar && bar % 2 === 0; S.bar = bar;
+    const E = S.E[Math.min(S.E.length - 1, bar)] ?? 0.4, prevE = S.E[Math.max(0, Math.min(S.E.length - 1, bar - 4))] ?? E;
+    if (downbeat && bar % 4 === 0 && E - prevE > 0.22) big = true;
+    step(dt, { calm: !!opts.calm, level: E * 0.75 + (opts.level || 0) * 0.4, downbeat, big });
+  }
+  const LV = { chordKey: null, onT: 0, lvSlow: 0 };
+  const MD = { t: 0, lv: 0, br: 0, quiet: 0, bpm: 0, minor: false, decided: false, lastSwitch: -1e9 };
+  function moodTick(dt, f) {
+    if (!f.active) return; const lv = f.level || 0;
+    if (lv < 0.04) { MD.quiet += dt; if (MD.quiet > 2 && MD.t > 0) { MD.t = 0; MD.lv = 0; MD.br = 0; MD.bpm = 0; MD.decided = false; } return; }
+    MD.quiet = 0; MD.t += dt; MD.lv += lv * dt; MD.br += (f.pitch ?? 0.5) * dt; if ((f.tempoConf || 0) > 0.35) MD.bpm = f.bpm; if (f.keyRoot != null) MD.minor = !!f.keyMinor;
+    if (!MD.decided && MD.t > 18) { MD.decided = true; songMood = { energy: Math.min(1, MD.lv / MD.t * 1.3), bright: MD.br / MD.t, bpm: MD.bpm || 95, minor: MD.minor }; if (want === 'auto' && W.t - MD.lastSwitch > 40) { MD.lastSwitch = W.t; setTheme('auto'); } }
+  }
+  function liveMode() { if (!ok) return; mode = 'live'; S = null; songMood = null; LV.chordKey = null; }
+  function frameLive(dt, f, opts) {
+    if (!ok || mode !== 'live') return;
+    moodTick(dt, f); if (f.keyRoot != null) W.tonicCof = (((f.keyMinor ? f.keyRoot + 3 : f.keyRoot) % 12) * 7) % 12;
+    W.hit = Math.max(W.hit, f.hit || 0); W.swell = Math.max(W.swell, f.swell || 0);
+    let big = (f.swell || 0) > 0.8; LV.lvSlow += ((f.level || 0) - LV.lvSlow) * Math.min(1, dt * 0.15); if ((f.level || 0) - LV.lvSlow > 0.3) big = true;
+    LV.onT -= dt; for (const o of (f.onsets || [])) { if (LV.onT > 0) break; LV.onT = 0.12; onNote(o); }
+    if ((f.kickHit || 0) > 0) onBass(Math.min(1, f.kickHit));
+    const ck = f.chord ? f.chord.root + f.chord.q : null; if (ck !== LV.chordKey) { if (ck) onChord(f.chord); LV.chordKey = ck; }
+    const downbeat = (f.tempoConf || 0) > 0.4 && f.downbeatIn != null && f.downbeatIn < dt * 1.5;
+    step(dt, { calm: !!opts.calm, level: f.active ? (f.level || 0) : 0.35, downbeat, big });
+  }
+
+  return { init, load, frame, live: liveMode, frameLive, setBaseHue() {}, setTheme, setTime,
+    get themes() { return [{ key: 'auto', name: 'Auto' }].concat(SC_ORDER.map(k => ({ key: k, name: SCN[k].name }))); },
+    get times() { return [{ key: 'auto', name: 'Auto' }].concat(TOD_ORDER.map(k => ({ key: k, name: TOD[k].name }))); },
+    get theme() { return cur; }, get themeName() { return SCN[cur].name + ' · ' + TOD[curTod].name; }, get want() { return want; },
+    set letterbox(v) { W.letterbox = !!v; resize(); }, get mode() { return mode; }, get ok() { return ok; },
+    get hasKey() { return !!key(); }, setKey(k) { ls.set('vg.pexels', k ? k.trim() : null); for (const id in pools) delete pools[id]; showMsg(''); ensurePool(cur, curTod); },
+    _dbg() { return { W, pools, live, next, vids }; } };
+})();
+
+</script>
+<script>
 // ===== Listen: hears shared system audio and turns it into musical features for the world =====
 const Listen = (() => {
   let ac = null, stream = null, an = null, src = null, onEnd = null;
@@ -1502,8 +1776,9 @@ const Listen = (() => {
 // ===== App =====
 (() => {
   const $ = id => document.getElementById(id);
-  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true };
+  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, engine: 'footage' };
   try { Object.assign(S, JSON.parse(localStorage.getItem('vibegen.settings') || '{}')); } catch (e) {}
+  const VIS = S.engine === '3d' || typeof Reel === 'undefined' ? (typeof World !== 'undefined' ? World : null) : Reel;
   const save = () => { try { localStorage.setItem('vibegen.settings', JSON.stringify(S)); } catch (e) {} };
   const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   let toastT; function toast(m) { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 4200); }
@@ -1551,18 +1826,18 @@ const Listen = (() => {
       if (S.next && library.length > 1) playCover(library[(i + 1) % library.length]); else coverStart(0);
     }
   }
-  function arrangeCover() { cover.arr = Engine.arrange(cover.chart, { swing: S.swing / 100, reharm: S.reharm, seed: 7 }); if (mode === 'cover' && World) World.load(cover, cover.arr); }
+  function arrangeCover() { cover.arr = Engine.arrange(cover.chart, { swing: S.swing / 100, reharm: S.reharm, seed: 7 }); if (mode === 'cover' && VIS) VIS.load(cover, cover.arr); }
   async function playCover(entry) {
     coverStop();
     try { cover = { ...analyzeEntry(entry) }; } catch (err) { toast(err.message || 'That MIDI could not be read.'); return; }
     S.tempo = null; mode = 'cover';
-    arrangeCover(); if (World) World.load(cover, cover.arr); lastChord = null;
+    arrangeCover(); if (VIS) VIS.load(cover, cover.arr); lastChord = null;
     coverStart(0); paintHeader(); renderCovers(); syncControls(); renderSheet(true);
     try { localStorage.setItem('vibegen.last', entry.id); } catch (e) {}
   }
 
 
-  const wn = () => (World && World.ok && World.themeName) ? (S.world === 'auto' ? 'Auto · ' : '') + World.themeName : 'Dreamscape';
+  const wn = () => (VIS && VIS.ok && VIS.themeName) ? (S.world === 'auto' ? 'Auto · ' : '') + VIS.themeName : 'Dreamscape';
   // ---------- header / transport ----------
   function paintHeader() {
     const F = Listen.F;
@@ -1669,9 +1944,15 @@ const Listen = (() => {
     $('vol').value = S.vol; $('volOut').textContent = S.vol + '%';
     for (const id of ['tempo', 'swing', 'vol']) { const el = $(id); el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); }
   }
-  $('todSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !World || !World.ok) return; S.tod = v; save(); World.setTime(v); syncControls(); paintHeader(); };
-  $('barsBtn').onclick = () => { S.bars = !S.bars; save(); if (World && World.ok) World.letterbox = S.bars; syncControls(); };
-  $('worldSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !World || !World.ok) return; S.world = v; save(); World.setTheme(v); syncControls(); setTimeout(paintHeader, 1300); };
+  for (const b of $('engSeg').children) b.classList.toggle('on', b.dataset.v === S.engine);
+  $('engSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || v === S.engine) return; S.engine = v; save(); location.reload(); };
+  const pxSave = (inp) => { const v = inp.value.trim(); if (v.length < 20) { toast("That doesn't look like a Pexels API key."); return false; } if (VIS && VIS.setKey) VIS.setKey(v); toast('Key saved. Loading footage…'); return true; };
+  $('pxSaveBtn').onclick = () => pxSave($('pxKey'));
+  $('pxGo').onclick = () => { if (pxSave($('pxKey2'))) $('pxHelp').hidden = true; };
+  $('pxLater').onclick = () => { $('pxHelp').hidden = true; };
+  $('todSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.tod = v; save(); VIS.setTime(v); syncControls(); paintHeader(); };
+  $('barsBtn').onclick = () => { S.bars = !S.bars; save(); if (VIS && VIS.ok) VIS.letterbox = S.bars; syncControls(); };
+  $('worldSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.world = v; save(); VIS.setTheme(v); syncControls(); setTimeout(paintHeader, 1300); };
   $('mellowBtn').onclick = () => { S.mellow = !S.mellow; save(); syncControls(); };
   $('chordsBtn').onclick = () => { S.chords = !S.chords; save(); syncControls(); };
   $('sheetBtn').onclick = () => { S.sheet = !S.sheet; save(); syncControls(); renderSheet(true); };
@@ -1720,19 +2001,19 @@ const Listen = (() => {
     requestAnimationFrame(frame);
     const dt = Math.min(0.1, lastTs ? (ts - lastTs) / 1000 : 0.016); lastTs = ts;
     const F = Listen.update();
-    if (!World || !World.ok) { paintTime(); return; }
+    if (!VIS || !VIS.ok) { paintTime(); return; }
     if (mode === 'cover' && cover) {
       if (g && cPlaying) { g.analyser.getFloatTimeDomainData(buf); let s2 = 0; for (let i = 0; i < buf.length; i++) s2 += buf[i] * buf[i]; level += (Math.min(1, Math.sqrt(s2 / buf.length) * 5) - level) * 0.1; } else level *= 0.95;
-      const jb = curJb(); World.frame(jb, dt, { calm: S.mellow, level });
+      const jb = curJb(); VIS.frame(jb, dt, { calm: S.mellow, level });
       const ch = cover.arr.chords, i = ch.indexOf(Engine.chordAt(ch, Math.min(jb, cover.chart.lenJb))); paintChord(ch[i], ch[i + 1], cover.chart.names, false);
     } else {
-      if (World.mode !== 'live') World.live();
+      if (VIS.mode !== 'live') VIS.live();
       let f = F;
       if (!Listen.active) {
         idleF.level = 0.22; idleF.pitch = 0.5 + Math.sin(ts / 2600) * 0.3; idleF.onsets = [];
                 f = idleF;
       }
-      World.frameLive(dt, f, { calm: S.mellow });
+      VIS.frameLive(dt, f, { calm: S.mellow });
       paintChord(Listen.active ? F.chord : null, null, SHARPS, true);
     }
     renderSheet(false); paintTime();
@@ -1741,12 +2022,13 @@ const Listen = (() => {
   }
 
   // hooks for testing
-  window.__vg = { S, Listen, World, addFiles, playCover, get mode() { return mode; } };
+  window.__vg = { S, Listen, World: VIS, addFiles, playCover, get mode() { return mode; } };
 
   // ---------- boot ----------
   (async () => {
-    try { if (World) World.init($('gl')); else toast('The 3D engine could not load. Music still plays.'); } catch (e) { console.error(e); toast('3D is not supported on this device. Music still plays.'); }
-    if (World && World.ok) { $('worldSeg').innerHTML = World.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = World.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); World.setTime(S.tod); World.letterbox = S.bars; World.setTheme(S.world); World.live(); }
+    try { if (VIS) VIS.init($('gl')); else toast('The 3D engine could not load. Music still plays.'); } catch (e) { console.error(e); toast('3D is not supported on this device. Music still plays.'); }
+    if (VIS && VIS.ok) { $('worldSeg').innerHTML = VIS.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = VIS.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); VIS.setTime(S.tod); VIS.letterbox = S.bars; VIS.setTheme(S.world); VIS.live(); }
+    if (VIS && VIS.setKey) { $('pxField').hidden = false; if (!VIS.hasKey) $('pxHelp').hidden = false; else $('pxKey').placeholder = 'Key saved'; }
     await DB.open(); library = await DB.all(); renderCovers();
     syncControls(); paintHeader(); paintListen(); requestAnimationFrame(frame);
     paintHeader();
