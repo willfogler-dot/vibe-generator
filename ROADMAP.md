@@ -16,7 +16,10 @@ Done in this pass:
 - Realistic base: textured terrain, EZ-Tree trees with distance stand-ins, photo grass cards and flowers, scanned rocks, reflective water, sun shadows, sky-based lighting, HDR bloom, light shafts.
 - The note orb is now off by default (Settings > Note orb).
 
+Added since: readable golden hour / dusk / night lighting, forested hillsides, a hiking trail, villages (cottages, tower, lanterns, lit windows, chimney smoke), a wild horse herd, foxes that bolt when you swoop.
+
 Next, in priority order:
+0. On-foot explore mode: land and walk the trails into villages; fly mode stays as a setting.
 1. Distant ground. Fields beyond the grass radius still read as flat texture. Add far grass impostors / color-varied meadow shading, and better ground detail (normal + AO).
 2. Lighting quality. Smooth time-of-day transitions (blend presets instead of switching), a softer sky and cloud model, ambient occlusion.
 3. Composition. Bias the path past landmarks (ruins, giant tree, lakes) so the glide frames them, and add scenic slow-downs.

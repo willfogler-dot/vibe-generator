@@ -9,6 +9,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { Tree } from './ez-tree.es.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const World = (() => {
   // ---------------- helpers ----------------
@@ -30,10 +31,10 @@ const World = (() => {
 
   // ---------------- scenes ----------------
   const SCN = {
-    valley: { name: 'River Valley', hill: 26, rough: 2.2, mtn: 300, mtnIn: 170, vw: 85, vfloor: 7, river: 9, rw: 10, water: 0.5, coast: 0, snow: 250, grass: 1, trees: 0.5, conifer: 0.3, ruins: 1, islands: 1, rocks: 0.7, dry: 0.3, flowers: 1, giant: 1, tint: '#ffffff', dryTint: '#d8c890', horse: 1 },
-    highlands: { name: 'Highlands', hill: 48, rough: 3.2, mtn: 560, mtnIn: 115, vw: 80, vfloor: 26, river: 7, rw: 16, water: 20, coast: 0, snow: 190, grass: 0.8, trees: 0.4, conifer: 0.85, ruins: 0.6, islands: 0.8, rocks: 1, dry: 0.5, flowers: 0.4, giant: 0.2, tint: '#e8f0d8', dryTint: '#c8b888', horse: 0.6 },
-    forest: { name: 'Deep Forest', hill: 24, rough: 2, mtn: 220, mtnIn: 150, vw: 70, vfloor: 3, river: 6, rw: 7, water: 0, coast: 0, snow: 400, grass: 0.75, trees: 1, conifer: 0.45, ruins: 0.8, islands: 0.4, rocks: 0.8, dry: 0.1, flowers: 0.6, giant: 1, tint: '#d8e8c8', dryTint: '#a8a070', horse: 0.3 },
-    coast: { name: 'Coastline', hill: 22, rough: 2.4, mtn: 200, mtnIn: 180, vw: 60, vfloor: 12, river: 0, rw: 1, water: 0, coast: 70, snow: 400, grass: 1, trees: 0.25, conifer: 0.4, ruins: 0.9, islands: 0.6, rocks: 1, dry: 0.6, flowers: 0.8, giant: 0.3, tint: '#f0f0d8', dryTint: '#e0cc90', horse: 1 }
+    valley: { name: 'River Valley', hill: 26, rough: 2.2, mtn: 300, mtnIn: 170, vw: 85, vfloor: 7, river: 9, rw: 10, water: 0.5, coast: 0, snow: 250, grass: 1, trees: 0.5, conifer: 0.3, ruins: 1, islands: 1, rocks: 0.7, dry: 0.3, flowers: 1, giant: 1, tint: '#ffffff', dryTint: '#d8c890', horse: 1, villages: 1 },
+    highlands: { name: 'Highlands', hill: 48, rough: 3.2, mtn: 560, mtnIn: 115, vw: 80, vfloor: 26, river: 7, rw: 16, water: 20, coast: 0, snow: 190, grass: 0.8, trees: 0.4, conifer: 0.85, ruins: 0.6, islands: 0.8, rocks: 1, dry: 0.5, flowers: 0.4, giant: 0.2, tint: '#e8f0d8', dryTint: '#c8b888', horse: 0.6, villages: 0.6 },
+    forest: { name: 'Deep Forest', hill: 24, rough: 2, mtn: 220, mtnIn: 150, vw: 70, vfloor: 3, river: 6, rw: 7, water: 0, coast: 0, snow: 400, grass: 0.75, trees: 1, conifer: 0.45, ruins: 0.8, islands: 0.4, rocks: 0.8, dry: 0.1, flowers: 0.6, giant: 1, tint: '#d8e8c8', dryTint: '#a8a070', horse: 0.3, villages: 0.7 },
+    coast: { name: 'Coastline', hill: 22, rough: 2.4, mtn: 200, mtnIn: 180, vw: 60, vfloor: 12, river: 0, rw: 1, water: 0, coast: 70, snow: 400, grass: 1, trees: 0.25, conifer: 0.4, ruins: 0.9, islands: 0.6, rocks: 1, dry: 0.6, flowers: 0.8, giant: 0.3, tint: '#f0f0d8', dryTint: '#e0cc90', horse: 1, villages: 1 }
   };
   const SC_ORDER = ['valley', 'highlands', 'forest', 'coast'];
   let SC = SCN.valley, cur = 'valley';
@@ -46,16 +47,18 @@ const World = (() => {
     if (P.coast) { const s = sstep(P.coast, P.coast + 30, dx + fbm(z * 0.008, 3.3, 3) * 25); h = mix(h, -16 + fbm(x * 0.01, z * 0.01, 3) * 5, s); }
     return h;
   }
+  // a hiking trail that wanders along the valley's east bank
+  const trailX = d => pathX(d) + 38 + 16 * Math.sin(d * 0.004 + 0.8) + 8 * Math.sin(d * 0.011 + 2.0);
   const groundAt = (x, z) => Math.max(heightAt(x, z), SC.water + 0.6);
   const slopeAt = (x, z, h) => Math.hypot(heightAt(x + 1, z) - h, heightAt(x, z + 1) - h);
 
   // ---------------- time of day (linear HDR values) ----------------
   const TOD = {
-    dawn:   { name: 'Dawn', el: 7, az: 60, sun: '#ffc09a', si: 2.2, zen: [0.10, 0.16, 0.36], hor: [0.95, 0.66, 0.55], fog: '#b8aec4', aI: 0.55, cl: [1.6, 1.25, 1.1], cd: [0.42, 0.40, 0.55], cover: 0.45, stars: 0.08, moon: 0, exp: 1.05, fogD: 0.0012, env: 0.7, disc: 30 },
-    day:    { name: 'Midday', el: 50, az: 30, sun: '#fff3e2', si: 3.4, zen: [0.10, 0.26, 0.70], hor: [0.62, 0.78, 0.95], fog: '#b4c8dc', aI: 0.5, cl: [2.4, 2.4, 2.4], cd: [0.75, 0.80, 0.92], cover: 0.42, stars: 0, moon: 0, exp: 0.95, fogD: 0.00075, env: 1.0, disc: 25 },
-    golden: { name: 'Golden Hour', el: 9, az: -22, sun: '#ffae6a', si: 3.0, zen: [0.10, 0.18, 0.42], hor: [1.25, 0.75, 0.48], fog: '#b8a8a4', aI: 0.5, cl: [2.0, 1.35, 0.95], cd: [0.45, 0.40, 0.55], cover: 0.4, stars: 0, moon: 0, exp: 1.0, fogD: 0.0009, env: 0.7, disc: 40 },
-    dusk:   { name: 'Dusk', el: -1.5, az: -35, sun: '#ff8a5c', si: 0.9, zen: [0.03, 0.05, 0.15], hor: [0.85, 0.42, 0.32], fog: '#4c4462', aI: 0.6, cl: [1.1, 0.55, 0.45], cd: [0.12, 0.11, 0.2], cover: 0.4, stars: 0.4, moon: 0, exp: 1.45, fogD: 0.0011, env: 0.9, disc: 0 },
-    night:  { name: 'Night', el: 34, az: 18, sun: '#a8bcff', si: 0.32, zen: [0.004, 0.008, 0.025], hor: [0.03, 0.045, 0.09], fog: '#141c30', aI: 0.7, cl: [0.06, 0.07, 0.11], cd: [0.01, 0.012, 0.025], cover: 0.3, stars: 1, moon: 1, exp: 2.3, fogD: 0.001, env: 1.2, disc: 0 }
+    dawn:   { name: 'Dawn', el: 8, az: 60, sun: '#ffc09a', si: 2.4, zen: [0.10, 0.16, 0.36], hor: [0.95, 0.66, 0.55], fog: '#b8aec4', aI: 0.95, cl: [1.6, 1.25, 1.1], cd: [0.42, 0.40, 0.55], cover: 0.45, stars: 0.08, moon: 0, exp: 1.05, fogD: 0.0008, env: 1.2, disc: 30 },
+    day:    { name: 'Midday', el: 50, az: 30, sun: '#fff3e2', si: 3.4, zen: [0.10, 0.26, 0.70], hor: [0.62, 0.78, 0.95], fog: '#b4c8dc', aI: 0.8, cl: [2.4, 2.4, 2.4], cd: [0.75, 0.80, 0.92], cover: 0.42, stars: 0, moon: 0, exp: 0.95, fogD: 0.00075, env: 1.0, disc: 25 },
+    golden: { name: 'Golden Hour', el: 13, az: -22, sun: '#ffae6a', si: 3.2, zen: [0.10, 0.18, 0.42], hor: [1.25, 0.75, 0.48], fog: '#b8a8a4', aI: 1.0, cl: [2.0, 1.35, 0.95], cd: [0.45, 0.40, 0.55], cover: 0.4, stars: 0, moon: 0, exp: 1.0, fogD: 0.0006, env: 1.2, disc: 40 },
+    dusk:   { name: 'Dusk', el: 3.5, az: -35, sun: '#ff8a5c', si: 1.7, zen: [0.03, 0.05, 0.15], hor: [0.85, 0.42, 0.32], fog: '#4c4462', aI: 1.15, cl: [1.1, 0.55, 0.45], cd: [0.12, 0.11, 0.2], cover: 0.4, stars: 0.4, moon: 0, exp: 1.25, fogD: 0.0007, env: 1.5, disc: 0 },
+    night:  { name: 'Night', el: 34, az: 18, sun: '#a8bcff', si: 0.85, zen: [0.004, 0.008, 0.025], hor: [0.03, 0.045, 0.09], fog: '#141c30', aI: 1.0, cl: [0.06, 0.07, 0.11], cd: [0.01, 0.012, 0.025], cover: 0.3, stars: 1, moon: 1, exp: 1.6, fogD: 0.0006, env: 2.2, disc: 0 }
   };
   const TOD_ORDER = ['dawn', 'day', 'golden', 'dusk', 'night'];
   let TD = TOD.day, curTod = 'day', wantTod = 'auto';
@@ -198,10 +201,10 @@ const World = (() => {
   async function loadAssets() {
     const tex = (f, srgb = true, rep = true) => texL.loadAsync('assets/' + f).then(t => { if (srgb) t.colorSpace = THREE.SRGBColorSpace; if (rep) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; });
     const glb = f => loader.loadAsync('assets/' + f + '.glb');
-    const [grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork] = await Promise.all([
+    const [grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork, fox] = await Promise.all([
       tex('grass.jpg'), tex('dirt_color.jpg'), tex('dirt_normal.jpg', false), tex('waternormals.jpg', false),
-      Promise.all(['rock1', 'rock2', 'rock3'].map(glb)), glb('grass'), Promise.all(['flower_white', 'flower_yellow', 'flower_blue'].map(glb)), glb('Horse'), glb('Stork')]);
-    Object.assign(A, { grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork });
+      Promise.all(['rock1', 'rock2', 'rock3'].map(glb)), glb('grass'), Promise.all(['flower_white', 'flower_yellow', 'flower_blue'].map(glb)), glb('Horse'), glb('Stork'), glb('Fox')]);
+    Object.assign(A, { grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork, fox });
     let rockMap = null; rocks[0].scene.traverse(o => { if (o.isMesh && !rockMap) rockMap = o.material.map; });
     if (rockMap) { rockMap.wrapS = rockMap.wrapT = THREE.RepeatWrapping; rockMap.colorSpace = THREE.SRGBColorSpace; }
     A.rockT = rockMap || dirtT;
@@ -213,9 +216,9 @@ const World = (() => {
   function makeTerrainMat() {
     const m = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 });
     m.onBeforeCompile = sh => {
-      Object.assign(sh.uniforms, { tGrass: { value: A.grassT }, tDirt: { value: A.dirtT }, tDirtN: { value: A.dirtN }, tRock: { value: A.rockT }, gTint: TU.gTint, dTint: TU.dTint, dryAmt: TU.dryAmt, snowLine: TU.snowLine, waterLevel: TU.waterLevel });
+      Object.assign(sh.uniforms, { tGrass: { value: A.grassT }, tDirt: { value: A.dirtT }, tDirtN: { value: A.dirtN }, tRock: { value: A.rockT }, gTint: TU.gTint, dTint: TU.dTint, dryAmt: TU.dryAmt, snowLine: TU.snowLine, waterLevel: TU.waterLevel, trailOn: TU.trailOn });
       sh.vertexShader = 'varying vec3 vWP; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n vWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
-      sh.fragmentShader = 'varying vec3 vWP; varying vec3 vWN; uniform sampler2D tGrass, tDirt, tDirtN, tRock; uniform vec3 gTint, dTint; uniform float dryAmt, snowLine, waterLevel;\n' + NOISE + '\n' + sh.fragmentShader
+      sh.fragmentShader = 'varying vec3 vWP; varying vec3 vWN; uniform sampler2D tGrass, tDirt, tDirtN, tRock; uniform vec3 gTint, dTint; uniform float dryAmt, snowLine, waterLevel, trailOn;\n' + NOISE + '\n' + sh.fragmentShader
         .replace('#include <map_fragment>', `
           vec3 nW = normalize(vWN); float slope = 1.0 - nW.y; vec2 q = mod(vWP.xz, 8192.0);
           float macro = gfbm(q * 0.012), macro2 = gfbm(q * 0.0025 + 7.0), fine = gn(q * 0.6);
@@ -228,6 +231,9 @@ const World = (() => {
           rockC *= 0.8 + 0.4 * gfbm(q * 0.02 + vec2(vWP.y * 0.02));
           vec3 col = mix(grassC, dirtC, smoothstep(0.62, 0.78, macro + fine * 0.15) * 0.55);
           col = mix(col, rockC, smoothstep(0.30, 0.52, slope + (macro - 0.5) * 0.25));
+          { float td0 = -vWP.z; float px = sin(td0 * 0.0021) * 140.0 + sin(td0 * 0.0057 + 1.3) * 45.0; float tx = px + 38.0 + 16.0 * sin(td0 * 0.004 + 0.8) + 8.0 * sin(td0 * 0.011 + 2.0);
+            float tdist = abs(vWP.x - tx) + (fine - 0.5) * 0.6; float trail = (1.0 - smoothstep(0.8, 1.7, tdist)) * (1.0 - smoothstep(0.3, 0.5, slope)) * trailOn;
+            col = mix(col, dirtC * vec3(0.92, 0.86, 0.8), trail * 0.9); }
           float beach = 1.0 - smoothstep(waterLevel + 0.4, waterLevel + 1.6 + fine, vWP.y);
           col = mix(col, mix(dirtC, vec3(0.30, 0.26, 0.19), 0.65), beach); float wet = 1.0 - smoothstep(waterLevel - 0.3, waterLevel + 0.5, vWP.y); col *= 1.0 - wet * 0.5;
           float sn = smoothstep(snowLine - 25.0, snowLine + 5.0, vWP.y + (macro - 0.5) * 50.0) * (1.0 - smoothstep(0.5, 0.75, slope));
@@ -238,7 +244,7 @@ const World = (() => {
     };
     return m;
   }
-  const TU = { gTint: { value: C(1, 1, 1) }, dTint: { value: C(1, 1, 1) }, dryAmt: { value: 0.3 }, snowLine: { value: 250 }, waterLevel: { value: 0 } };
+  const TU = { trailOn: { value: 1 }, gTint: { value: C(1, 1, 1) }, dTint: { value: C(1, 1, 1) }, dryAmt: { value: 0.3 }, snowLine: { value: 250 }, waterLevel: { value: 0 } };
   function tileIndex(segs) {
     if (idxCache[segs]) return idxCache[segs];
     const n = segs + 1, idx = [];
@@ -377,7 +383,7 @@ const World = (() => {
     { const gt = trees.variants.find(v => v.giant); props.variants.push({ r: gt.r, near: Batch(gt.near.meshes.map(m => ({ geo: m.geometry, mat: m.material })), 6, { shadow: true }), kind: 'giant' }); }
     // grass + flowers
     buildGrass();
-    buildOrb(); buildStreaks(); buildCreatures();
+    buildOrb(); buildStreaks(); buildCreatures(); buildVillageKit();
     { const n = 500, pos = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) pos[i] = Math.random();
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       motes = new THREE.Points(g, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { camPos: { value: V() }, box: { value: V(70, 30, 90) }, amt: { value: 0.4 }, hit: { value: 0 }, col: { value: C(1, 1, 1) }, scale: { value: 500 }, time: U.time, blink: { value: 0 }, size: { value: 0.1 } },
@@ -423,10 +429,12 @@ const World = (() => {
   function fillChunk(c) {
     const x0 = c.ix * GCH, z0 = c.iz * GCH; let s = (Math.imul(c.ix, 73856093) ^ Math.imul(c.iz, 19349663)) >>> 0 || 1;
     const r = () => { s = Math.imul(s ^ (s >>> 15), 2246822519) + 0x9e3779b9 >>> 0; s ^= s >>> 13; return (s >>> 0) / 4294967296; };
+    const plots = houses.filter(q => q.x > x0 - 8 && q.x < x0 + GCH + 8 && q.z > z0 - 8 && q.z < z0 + GCH + 8);
     c.g.begin(); for (const b of c.f) b.begin();
     const cnt = Math.round(GN * SC.grass * (c.r <= 1 ? 1 : 0.6));
     for (let i = 0; i < cnt; i++) {
       const x = x0 + r() * GCH, z = z0 + r() * GCH, rot = r() * 6.283, sv = r(), fl = r(), fk = r();
+      if (Math.abs(x - trailX(-z)) < 1.6) continue; if (plots.length && plots.some(q => (x - q.x) * (x - q.x) + (z - q.z) * (z - q.z) < q.r2)) continue;
       const h = heightAt(x, z); if (h < SC.water + 0.35 || h > SC.snow - 35) continue; if (slopeAt(x, z, h) > 0.75) continue;
       const patch = vn(x * 0.05 + 3.3, z * 0.05 - 1.7); if (patch < 0.25 && sv < 0.7) continue;
       const sc2 = (0.55 + patch * 0.9) * (0.75 + sv * 0.5);
@@ -446,20 +454,118 @@ const World = (() => {
       const k2 = w.ix + ',' + w.iz; let c = gchunks.get(k2); if (!c) { c = gspare.pop() || newChunk(); gchunks.set(k2, c); } c.ix = w.ix; c.iz = w.iz; c.r = w.r; c.dense = w.r <= 1; fillChunk(c); }
   }
 
+  // ---------------- villages: cottages, a tower, trail lanterns, lit windows, chimney smoke ----------------
+  const LC = h => new THREE.Color(h).convertSRGBToLinear();
+  const WIN = { value: 0 }, houses = []; let villages = [], HV = 0, LAMPV = 0;
+  const nearVillage = (x, z) => villages.some(v => (x - v.x) * (x - v.x) + (z - v.z) * (z - v.z) < v.r * v.r);
+  function HB() { return { p: [], n: [], c: [], e: [] }; }
+  function hAdd(b, geo, m4, col, em = 0) { const g = geo.index ? geo.toNonIndexed() : geo; if (m4) g.applyMatrix4(m4); const P = g.attributes.position.array, N = g.attributes.normal.array;
+    for (let i = 0; i < P.length; i += 3) { b.p.push(P[i], P[i + 1], P[i + 2]); b.n.push(N[i], N[i + 1], N[i + 2]); b.c.push(col.r, col.g, col.b); b.e.push(em); } }
+  function hBuild(b) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(b.c, 3)); g.setAttribute('aEm', new THREE.Float32BufferAttribute(b.e, 1)); g.computeBoundingSphere(); return g; }
+  const MX = (x, y, z, sx = 1, sy = 1, sz = 1, ry = 0) => new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)), V(sx, sy, sz));
+  function prism(L, Wd, H) { const g = new THREE.CylinderGeometry(1, 1, 1, 3, 1); g.rotateX(-Math.PI / 2); g.rotateY(Math.PI / 2); g.scale(L, H / 1.5, Wd / 1.732); g.translate(0, H / 3, 0); g.computeVertexNormals(); return g; }
+  // k: 0 plaster cottage + thatch, 1 stone cottage + slate, 2 long house + tiles, 3 stone tower
+  function makeHouse(k) {
+    const b = HB(), stone = LC('#a59c90'), plaster = LC('#d9cfbc'), timber = LC('#4a3a2c'), dark = LC('#2a2622'), glass = LC('#3a3428');
+    const roofC = LC(['#8c7650', '#4c5058', '#8e4c3a', '#4c5058'][k]), wallC = k === 1 || k === 3 ? stone : plaster, wallE = k === 1 || k === 3 ? -1 : 0;
+    if (k === 3) {
+      hAdd(b, new THREE.BoxGeometry(4.6, 15, 4.6), MX(0, 5.5, 0), wallC, -1);
+      hAdd(b, new THREE.ConeGeometry(3.9, 4.2, 4, 1), MX(0, 15.1, 0, 1, 1, 1, Math.PI / 4), roofC);
+      for (const [x, z, ry] of [[0, 2.32, 0], [2.32, 0, Math.PI / 2], [0, -2.32, 0], [-2.32, 0, Math.PI / 2]]) { hAdd(b, new THREE.BoxGeometry(0.7, 1.2, 0.12), MX(x, 10.5, z, 1, 1, 1, ry), glass, 1); hAdd(b, new THREE.BoxGeometry(0.6, 1.0, 0.12), MX(x, 5.5, z, 1, 1, 1, ry), glass, 1); }
+      hAdd(b, new THREE.BoxGeometry(1.3, 2.3, 0.14), MX(0, 1.15, 2.32), dark);
+      return { geo: hBuild(b), chim: null, r: 4 };
+    }
+    const Wd = k === 2 ? 11 : R(6.5, 8.5), D = R(5, 6), H = R(3.2, 3.8), rh = k === 0 ? 3.4 : 2.8;
+    hAdd(b, new THREE.BoxGeometry(Wd, H + 2, D), MX(0, (H + 2) / 2 - 2, 0), wallC, wallE);
+    hAdd(b, prism(Wd + 0.9, D + 1.1, rh), MX(0, H, 0), roofC);
+    if (k !== 1) { for (const x of [-Wd / 2 + 0.12, Wd / 2 - 0.12]) for (const z of [-D / 2 - 0.02, D / 2 + 0.02]) hAdd(b, new THREE.BoxGeometry(0.28, H, 0.12), MX(x, H / 2, z), timber); hAdd(b, new THREE.BoxGeometry(Wd, 0.22, 0.12), MX(0, H * 0.55, D / 2 + 0.03), timber); hAdd(b, new THREE.BoxGeometry(Wd, 0.22, 0.12), MX(0, H * 0.55, -D / 2 - 0.03), timber); }
+    const nw = k === 2 ? 4 : 2; for (let i = 0; i < nw; i++) { const x = (i - (nw - 1) / 2) * (Wd / nw); for (const z of [D / 2 + 0.04, -D / 2 - 0.04]) { if (z > 0 && Math.abs(x) < 1.0) continue; hAdd(b, new THREE.BoxGeometry(0.9, 1.0, 0.1), MX(x, H * 0.5, z), glass, 1); } }
+    hAdd(b, new THREE.BoxGeometry(0.1, 0.9, 0.8), MX(Wd / 2 + 0.04, H * 0.5, 0), glass, 1);
+    hAdd(b, new THREE.BoxGeometry(1.1, 2.1, 0.12), MX(0, 1.05, D / 2 + 0.05), dark);
+    const cx = Wd * 0.28, cz = -D * 0.18; hAdd(b, new THREE.BoxGeometry(0.75, rh + 1.6, 0.75), MX(cx, H + (rh + 1.6) / 2 - 0.3, cz), stone, -1);
+    return { geo: hBuild(b), chim: V(cx, H + rh + 1.3, cz), r: Math.max(Wd, D) * 0.6 };
+  }
+  function makeLamp() { const b = HB(), wood = LC('#3a2e24'); hAdd(b, new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6), MX(0, 1.3, 0), wood); hAdd(b, new THREE.BoxGeometry(0.06, 0.06, 0.55), MX(0, 2.5, 0.25), wood);
+    hAdd(b, new THREE.BoxGeometry(0.26, 0.34, 0.26), MX(0, 2.25, 0.5), LC('#5a4a30'), 1); return { geo: hBuild(b), chim: null, r: 1 }; }
+  function houseMaterial() {
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+    m.onBeforeCompile = sh => { sh.uniforms.winGlow = WIN; sh.uniforms.tRock = { value: A.rockT };
+      sh.vertexShader = 'attribute float aEm; varying float vEm; varying vec3 vHP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vEm = aEm;').replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+        vec4 hp4 = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          hp4 = instanceMatrix * hp4;
+        #endif
+        vHP = (modelMatrix * hp4).xyz;`);
+      sh.fragmentShader = 'varying float vEm; varying vec3 vHP; uniform float winGlow; uniform sampler2D tRock;\n' + NOISE + '\n' + sh.fragmentShader
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          float grime = gfbm(vHP.xz * 0.4 + vHP.y * 0.7); vec3 rt = texture2D(tRock, vHP.xy * 0.2 + vHP.zy * 0.2).rgb;
+          diffuseColor.rgb *= mix(0.72, 1.08, grime) * mix(1.0, 0.45 + dot(rt, vec3(0.6)), step(vEm, -0.5)) * mix(1.0, 0.82, smoothstep(1.2, -0.5, vHP.y - 0.0) * 0.0);`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          totalEmissiveRadiance += vec3(1.0, 0.58, 0.24) * max(vEm, 0.0) * winGlow * (0.85 + 0.15 * sin(vHP.x * 3.1 + vHP.z * 2.3 + vHP.y));`);
+    };
+    m.customProgramCacheKey = () => 'house'; return m;
+  }
+  const HOUSE_DEF = [];
+  function buildVillageKit() {
+    const mat = houseMaterial(); HV = props.variants.length;
+    for (let k = 0; k < 4; k++) { const h = makeHouse(k); HOUSE_DEF.push(h); props.variants.push({ r: h.r * 2.2 + 6, near: Batch([{ geo: h.geo, mat }], 40, { shadow: true, kind: 'house' }), kind: 'house' }); }
+    const l = makeLamp(); LAMPV = props.variants.length; props.variants.push({ r: 3, near: Batch([{ geo: l.geo, mat }], 160, { shadow: false, kind: 'lamp' }), kind: 'lamp' });
+    buildSmoke();
+  }
+  function makeVillage(D) {
+    if (SC.villages === 0) return;
+    const cx = trailX(D) + R(-6, 16), cz = -D, ch = heightAt(cx, cz); if (ch < SC.water + 1.5 || slopeAt(cx, cz, ch) > 0.3) return;
+    const V0 = { x: cx, z: cz, r: 42, d: D }; villages.push(V0); landmarks.push({ d: D, x: cx, z: cz, y: ch + 7 });
+    const placed = [], n = 5 + Math.floor(rnd() * 6), tower = rnd() < 0.4;
+    for (let i = 0, tries = 0; i < n + (tower ? 1 : 0) && tries < 60; tries++) {
+      const k = tower && i === 0 ? 3 : Math.floor(rnd() * 3), def = HOUSE_DEF[k], a = rnd() * 6.283, rr = R(6, 36), x = cx + Math.cos(a) * rr, z = cz + Math.sin(a) * rr;
+      const h = heightAt(x, z); if (h < SC.water + 1 || slopeAt(x, z, h) > 0.35) continue; if (Math.abs(x - trailX(-z)) < def.r + 2.5) continue;
+      if (placed.some(q => Math.hypot(q.x - x, q.z - z) < q.r + def.r + 3)) continue;
+      const toTrail = Math.atan2(trailX(-z) - x, 0) , yaw = (Math.abs(trailX(-z) - x) > 0 ? (trailX(-z) > x ? Math.PI / 2 : -Math.PI / 2) : 0) + R(-0.35, 0.35), s = R(0.92, 1.12);
+      const it = { x, y: h - 0.15, z, yaw, s, v: HV + k }; props.items.push(it); placed.push({ x, z, r: def.r });
+      houses.push({ x, z, r2: (def.r * s + 1.5) * (def.r * s + 1.5), d: D });
+      if (def.chim) { const c = Math.cos(yaw), sn = Math.sin(yaw); it.chim = V(x + (def.chim.x * c + def.chim.z * sn) * s, h - 0.15 + def.chim.y * s, z + (-def.chim.x * sn + def.chim.z * c) * s); }
+      i++;
+    }
+    for (let dd = D - 60; dd <= D + 60; dd += R(13, 18)) { const x = trailX(dd) + 1.7, z = -dd, h = heightAt(x, z); if (h < SC.water + 0.5) continue; props.items.push({ x, y: h - 0.05, z, yaw: Math.PI / 2, s: 1, v: LAMPV }); }
+  }
+  // chimney smoke: soft puffs that rise and drift with the wind
+  const SMOKE = { pts: null, mat: null, n: 420, k: 0, chims: [], acc: 0 };
+  function buildSmoke() {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.22)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    const g = new THREE.BufferGeometry(), n = SMOKE.n, A3 = (k, d) => { const a = new Float32Array(n * d); g.setAttribute(k, new THREE.BufferAttribute(a, d)); return a; };
+    A3('position', 3); const born = A3('born', 1); A3('seed', 1); born.fill(-1e4);
+    SMOKE.mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { tex: { value: new THREE.CanvasTexture(c) }, time: U.time, windDir: U.windDir, scale: { value: 500 }, col: { value: C('#b8b4b0') } },
+      vertexShader: `attribute float born, seed; uniform float time, scale; uniform vec2 windDir; varying float vA;
+        void main(){ float age = time - born; float t = age / 7.0; vec3 p = position + vec3(windDir.x * age * (0.6 + age * 0.12), age * 0.9 - age * age * 0.03, windDir.y * age * (0.6 + age * 0.12)) + vec3(sin(age * 0.9 + seed * 6.0), 0.0, cos(age * 0.7 + seed * 4.0)) * 0.3 * age;
+          vA = (t < 0.0 || t > 1.0) ? 0.0 : smoothstep(0.0, 0.08, t) * (1.0 - t); vec4 mv = viewMatrix * vec4(p, 1.0);
+          gl_PointSize = vA > 0.0 ? clamp((0.9 + age * 0.7) * scale / max(-mv.z, 1.0), 0.0, 220.0) : 0.0; gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform sampler2D tex; uniform vec3 col; varying float vA; void main(){ vec4 t = texture2D(tex, gl_PointCoord); gl_FragColor = vec4(col, t.a * vA * 0.75); }` });
+    SMOKE.pts = new THREE.Points(g, SMOKE.mat); SMOKE.pts.frustumCulled = false; scene.add(SMOKE.pts);
+  }
+  function updateSmoke(dt) {
+    if (!SMOKE.pts || !SMOKE.chims.length) return; SMOKE.acc += dt * SMOKE.chims.length * 1.6; const g = SMOKE.pts.geometry, P = g.attributes.position.array, B = g.attributes.born.array, Sd = g.attributes.seed.array;
+    while (SMOKE.acc > 1) { SMOKE.acc -= 1; const c = pick(SMOKE.chims), i = SMOKE.k; SMOKE.k = (SMOKE.k + 1) % SMOKE.n; P[i * 3] = c.x + R(-0.15, 0.15); P[i * 3 + 1] = c.y; P[i * 3 + 2] = c.z + R(-0.15, 0.15); B[i] = W.t; Sd[i] = rnd(); g.attributes.position.needsUpdate = true; g.attributes.born.needsUpdate = true; g.attributes.seed.needsUpdate = true; }
+  }
+  function gatherChimneys() { const cx = cam.position.x, cz = cam.position.z; SMOKE.chims = []; for (const it of props.items) if (it.chim) { const dx = it.x - cx, dz = it.z - cz; if (dx * dx + dz * dz < 380 * 380) SMOKE.chims.push(it.chim); if (SMOKE.chims.length > 14) break; } }
+
   // ---------------- content along the journey ----------------
   let lay = [], landmarks = [];
   function resetContent() {
-    trees.items = []; rocks.items = []; props.items = []; landmarks = []; seed = 101 + SC_ORDER.indexOf(cur) * 37;
+    trees.items = []; rocks.items = []; props.items = []; landmarks = []; villages = []; houses.length = 0; seed = 101 + SC_ORDER.indexOf(cur) * 37;
     const L = (gap, fn) => ({ gap, fn, next: W.d - 300 });
     const forestMask = (x, z) => sstep(-0.15, 0.3, fbm(x * 0.0035 + 5.1, z * 0.0035 - 2.7, 3));
     const nb = trees.variants.map((v, i) => i), broad = nb.filter(i => trees.variants[i].kind === 'b'), con = nb.filter(i => trees.variants[i].kind === 'c'), bush = nb.filter(i => trees.variants[i].kind === 'bush');
-    const tryTree = (x, z) => { const h = heightAt(x, z); if (h < SC.water + 0.8 || h > SC.snow - 25) return; if (slopeAt(x, z, h) > 0.7) return;
-      const fm = forestMask(x, z); if (rnd() > SC.trees * (0.04 + 0.96 * fm * fm)) return;
-      const isB = rnd() < 0.22, isC = rnd() < SC.conifer + clamp((h - 60) / 160, 0, 0.5); const v = isB ? pick(bush) : isC ? pick(con) : pick(broad);
+    const tryTree = (x, z) => { const h = heightAt(x, z); if (h < SC.water + 0.8 || h > SC.snow - 25) return; const sl = slopeAt(x, z, h); if (sl > 1.15) return;
+      if (Math.abs(x - trailX(-z)) < 4) return; if (nearVillage(x, z)) return;
+      const hill = clamp((h - SC.vfloor - 10) / 60, 0, 0.6), fm = Math.min(1, forestMask(x, z) + hill); if (rnd() > SC.trees * (0.05 + 0.95 * fm * fm)) return;
+      const isB = rnd() < 0.18, isC = rnd() < SC.conifer + clamp((h - 40) / 140, 0, 0.6) + (sl > 0.6 ? 0.4 : 0); const v = isB ? pick(bush) : isC ? pick(con) : pick(broad);
       trees.items.push({ x, y: h - 0.2, z, yaw: R(0, 6.28), s: R(0.8, 1.25), v }); };
     lay = [
-      L([0.22, 0.5], D => { const lat = (rnd() < 0.5 ? -1 : 1) * R(14, 180); tryTree(pathX(D) + lat, -D + R(-2, 2)); }),
-      L([0.5, 1.1], D => { const lat = (rnd() < 0.5 ? -1 : 1) * R(180, 700); tryTree(pathX(D) + lat, -D + R(-2, 2)); }),
+      L([550, 950], D => makeVillage(D)),
+      L([0.2, 0.45], D => { const lat = (rnd() < 0.5 ? -1 : 1) * R(14, 220); tryTree(pathX(D) + lat, -D + R(-2, 2)); }),
+      L([0.28, 0.65], D => { const lat = (rnd() < 0.5 ? -1 : 1) * R(220, 760); tryTree(pathX(D) + lat, -D + R(-2, 2)); }),
       L([2.5, 7], D => { if (rnd() > SC.rocks) return; const x = pathX(D) + (rnd() < 0.5 ? -1 : 1) * R(7, 140), z = -D, h = heightAt(x, z); if (h < SC.water - 0.5) return; rocks.items.push({ x, y: h - 0.3, z, yaw: R(0, 6.28), s: R(0.35, 2.2) * (rnd() < 0.1 ? 3 : 1), v: Math.floor(rnd() * 3) }); }),
       L([180, 360], D => { if (rnd() > SC.ruins) return; const x = pathX(D) + (rnd() < 0.5 ? -1 : 1) * R(22, 70), z = -D, h = heightAt(x, z); if (h < SC.water + 1) return; const s = R(0.9, 1.4);
         props.items.push({ x, y: h - 0.5, z, yaw: R(0, 6.28), s, v: Math.floor(rnd() * 3) }); landmarks.push({ d: D, x, z, y: h + 6 * s }); }),
@@ -472,7 +578,7 @@ const World = (() => {
     for (const l of lay) { let n = 0; while (l.next < W.d + 900 && (all || n++ < 300)) { l.fn(l.next); l.next += R(l.gap[0], l.gap[1]); } }
     const zc = -W.d + 450; // forget things well behind the journey
     for (const set of [trees, rocks, props]) if (set.items.length && set.items[0].z > zc) set.items = set.items.filter(it => it.z <= zc);
-    landmarks = landmarks.filter(l => l.d > W.d - 200);
+    landmarks = landmarks.filter(l => l.d > W.d - 200); villages = villages.filter(v => v.d > W.d - 600); if (houses.length && houses[0].d < W.d - 600) { const keep = houses.filter(q => q.d >= W.d - 600); houses.length = 0; houses.push(...keep); }
   }
 
   // ---------------- the note orb: it lands on a stone on every note ----------------
@@ -589,26 +695,56 @@ const World = (() => {
   }
 
   // ---------------- creatures: a wild horse, birds ----------------
-  const HORSE = { obj: null, mixer: null, on: false, t: 0, lat: 12, dOff: 30 }, BIRDS = [];
+  const HORSE = { on: false, obj: { position: V() } }, BIRDS = [];
+  const HERD = { on: false, list: [], t: 0, c: V(), head: 0, speed: 8.5, lastEnd: -30 }, FOXES = [];
   function buildCreatures() {
-    const h = A.horse.scene; h.scale.setScalar(0.0034); h.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.material.roughness = 0.75; } });
-    HORSE.obj = h; HORSE.mixer = new THREE.AnimationMixer(h); HORSE.mixer.clipAction(A.horse.animations[0]).play(); h.visible = false; scene.add(h);
+    for (let i = 0; i < 7; i++) { const h = A.horse.scene.clone(); h.scale.setScalar(0.0034 * R(0.9, 1.08)); h.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.material = o.material.clone(); o.material.roughness = 0.75; o.material.color.multiplyScalar(R(0.55, 1.0)); } });
+      const mx = new THREE.AnimationMixer(h), act = mx.clipAction(A.horse.animations[0]); act.play(); act.time = R(0, 1.5); h.visible = false; scene.add(h);
+      HERD.list.push({ obj: h, mx, off: V(R(-6, 6), 0, (i - 3) * R(2.5, 4)), wob: R(0, 6.28) }); }
     for (let i = 0; i < 7; i++) { const b = A.stork.scene.clone(); b.scale.setScalar(0.005); b.traverse(o => { if (o.isMesh) { o.castShadow = false; o.material = o.material.clone(); o.material.color.setRGB(0.35, 0.33, 0.32); } });
       const mx = new THREE.AnimationMixer(b); const act = mx.clipAction(A.stork.animations[0]); act.play(); act.time = Math.random(); b.visible = false; scene.add(b); BIRDS.push({ obj: b, mx, on: false, p: V(), v: V(), life: 0 }); }
+    const fbb = new THREE.Box3().setFromObject(A.fox.scene), flen = Math.max(fbb.max.x - fbb.min.x, fbb.max.z - fbb.min.z) || 1;
+    for (let i = 0; i < 5; i++) { const f = SkeletonUtils.clone(A.fox.scene); f.scale.setScalar(1.05 / flen); f.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+      const mx = new THREE.AnimationMixer(f), acts = {}; for (const a of A.fox.animations) acts[a.name.toLowerCase()] = mx.clipAction(a); f.visible = false; scene.add(f);
+      FOXES.push({ obj: f, mx, acts, on: false, mode: 'survey', timer: 0, head: 0, speed: 0, cur: null }); }
   }
   function flock(from) {
     if (curTod === 'night') return; cam.getWorldDirection(tv); const side = rnd() < 0.5 ? -1 : 1, base = from ? from.clone() : V(cam.position.x + tv.x * 80 + side * 60, cam.position.y + R(12, 35), cam.position.z + tv.z * 80), vel = from ? V(R(-1, 1) * 8, R(2.5, 4), R(-1, 1) * 8) : V(-side * R(7, 9), R(0, 0.8), R(-3, 1));
     BIRDS.forEach((b, k) => { const row = Math.ceil(k / 2), s = k % 2 ? 1 : -1; b.p.set(base.x + side * row * 2.2, base.y + R(-0.5, 0.5), base.z + s * row * 2); b.v.copy(vel); b.on = true; b.life = 22; b.obj.visible = true; b.obj.rotation.y = Math.atan2(vel.x, vel.z); });
   }
+  function foxMode(F, m) { if (F.mode === m && F.cur) return; F.mode = m; const a = F.acts[m] || F.acts.walk; if (!a) return; a.reset().fadeIn(0.35).play(); if (F.cur && F.cur !== a) F.cur.fadeOut(0.35); F.cur = a; F.timer = m === 'survey' ? R(2.5, 6) : m === 'walk' ? R(5, 11) : 3; }
+  function okGround(x, z) { const h = heightAt(x, z); return h > SC.water + 0.5 && slopeAt(x, z, h) < 0.5 && !nearVillage(x, z) ? h : null; }
   function updateCreatures(dt) {
     for (const b of BIRDS) { if (!b.on) continue; b.life -= dt; if (b.life < 0) { b.on = false; b.obj.visible = false; continue; } b.p.addScaledVector(b.v, dt); b.obj.position.copy(b.p); b.mx.update(dt); }
-    if (HORSE.on) {
-      HORSE.t += dt; const run = Math.max(W.speed, 9), d = W.d + HORSE.dOff; HORSE.dOff += (run - W.speed) * dt * 0.3 + Math.sin(HORSE.t * 0.2) * dt * 0.8;
-      const lat = HORSE.lat + Math.sin(HORSE.t * 0.15) * 4 + (HORSE.t > 40 ? (HORSE.t - 40) * 3 * Math.sign(HORSE.lat) : 0);
-      onPath(d, lat, tv); tv.y = heightAt(tv.x, tv.z); if (tv.y < SC.water + 0.3 || HORSE.t > 55) { HORSE.on = false; HORSE.obj.visible = false; return; }
-      onPath(d + 3, lat, tv2); HORSE.obj.position.copy(tv); HORSE.obj.rotation.y = Math.atan2(tv2.x - tv.x, tv2.z - tv.z);
-      HORSE.mixer.timeScale = run / 10; HORSE.mixer.update(dt); HORSE.obj.visible = true;
-    } else if (SC.horse && curTod !== 'night' && W.t - (HORSE.lastEnd || -60) > 70 && rnd() < dt * 0.02 * SC.horse) { HORSE.on = true; HORSE.t = 0; HORSE.lat = (rnd() < 0.5 ? -1 : 1) * R(9, 18); HORSE.dOff = R(25, 45); HORSE.lastEnd = W.t + 55; }
+    cam.getWorldDirection(tv); const fx = tv.x, fz = tv.z, fl = Math.hypot(fx, fz) || 1, ux = fx / fl, uz = fz / fl;
+    // a wild herd crosses the meadows now and then
+    if (HERD.on) {
+      HERD.t += dt; const hx = Math.sin(HERD.head), hz = Math.cos(HERD.head);
+      const ahead = heightAt(HERD.c.x + hx * 14, HERD.c.z + hz * 14); if (ahead < SC.water + 0.6 || slopeAt(HERD.c.x + hx * 14, HERD.c.z + hz * 14, ahead) > 0.55) HERD.head += dt * 1.3; else HERD.head += Math.sin(HERD.t * 0.3) * dt * 0.12;
+      HERD.c.x += hx * HERD.speed * dt; HERD.c.z += hz * HERD.speed * dt;
+      const far = Math.hypot(HERD.c.x - cam.position.x, HERD.c.z - cam.position.z) > 420;
+      for (const H of HERD.list) { const c = Math.cos(HERD.head), sn = Math.sin(HERD.head), ox = H.off.x + Math.sin(HERD.t * 0.7 + H.wob) * 0.8, oz = H.off.z;
+        const x = HERD.c.x + ox * c + oz * sn, z = HERD.c.z - ox * sn + oz * c; H.obj.position.set(x, heightAt(x, z), z); H.obj.rotation.y = HERD.head; H.mx.timeScale = HERD.speed / 9; H.mx.update(dt); H.obj.visible = !far; }
+      if (HERD.t > 50 || (far && HERD.t > 8)) { HERD.on = false; HERD.lastEnd = W.t; for (const H of HERD.list) H.obj.visible = false; }
+    } else if (SC.horse && curTod !== 'night' && W.t - HERD.lastEnd > 35 && rnd() < dt * 0.06 * SC.horse) {
+      for (let tries = 0; tries < 8; tries++) { const dist = R(70, 150), lat = R(-90, 90), x = cam.position.x + ux * dist - uz * lat, z = cam.position.z + uz * dist + ux * lat; if (okGround(x, z) == null) continue;
+        HERD.on = true; HERD.t = 0; HERD.c.set(x, 0, z); HERD.head = Math.atan2(ux, uz) + (rnd() < 0.5 ? 1 : -1) * R(1.1, 1.9); HERD.speed = R(7, 10); break; }
+    }
+    // foxes wander the meadows; swoop close and they bolt
+    for (const F of FOXES) {
+      const o = F.obj, dx = o.position.x - cam.position.x, dz = o.position.z - cam.position.z;
+      if (!F.on || dx * dx + dz * dz > 240 * 240 || (dx * ux + dz * uz) < -60) {
+        F.on = false; o.visible = false; if (rnd() > dt * 0.8) continue;
+        const dist = R(25, 140), lat = R(-55, 55), x = cam.position.x + ux * dist - uz * lat, z = cam.position.z + uz * dist + ux * lat, h = okGround(x, z); if (h == null) continue;
+        o.position.set(x, h, z); F.head = R(0, 6.28); F.on = true; o.visible = true; foxMode(F, rnd() < 0.5 ? 'walk' : 'survey'); continue;
+      }
+      const ad = Math.hypot(o.position.x - AV.pos.x, o.position.z - AV.pos.z, (o.position.y - AV.pos.y) * 0.5);
+      if (ad < 16 && F.mode !== 'run') { foxMode(F, 'run'); F.head = Math.atan2(o.position.x - AV.pos.x, o.position.z - AV.pos.z); }
+      F.timer -= dt; if (F.timer < 0) foxMode(F, F.mode === 'survey' ? 'walk' : 'survey');
+      const sp = F.mode === 'run' ? 7 : F.mode === 'walk' ? 1.3 : 0; F.speed += (sp - F.speed) * Math.min(1, dt * 3);
+      const nx = o.position.x + Math.sin(F.head) * 2.5, nz = o.position.z + Math.cos(F.head) * 2.5; if (okGround(nx, nz) == null) F.head += dt * 2.5; else if (F.mode === 'walk') F.head += Math.sin(W.t * 0.5 + o.id) * dt * 0.4;
+      o.position.x += Math.sin(F.head) * F.speed * dt; o.position.z += Math.cos(F.head) * F.speed * dt; o.position.y = heightAt(o.position.x, o.position.z); o.rotation.y = F.head; F.mx.update(dt);
+    }
   }
 
   // ---------------- time of day + scenes ----------------
@@ -618,9 +754,10 @@ const World = (() => {
     U.stars.value = TD.stars; U.moon.value = TD.moon; U.sunDisc.value = TD.disc; U.cover.value = TD.cover; U.aurora.value = k === 'night' ? 1 : 0;
     U.skyZen.value.setRGB(...TD.zen); U.skyHor.value.setRGB(...TD.hor); U.cloudLit.value.setRGB(...TD.cl); U.cloudDark.value.setRGB(...TD.cd);
     U.sunCol.value.set(TD.sun).multiplyScalar(TD.si); U.fogCol.value.set(TD.fog);
-    if (scene) { scene.fog.color.set(TD.fog); scene.fog.density = TD.fogD; sun.color.set(TD.sun); sun.intensity = TD.si * (k === 'night' ? 1.2 : 1); hemi.intensity = TD.aI * 0.5; hemi.color.setRGB(...TD.zen).multiplyScalar(2).addScalar(0.1); hemi.groundColor.set(k === 'night' ? '#0a0c10' : '#4a4030');
+    if (scene) { scene.fog.color.set(TD.fog); scene.fog.density = TD.fogD; sun.color.set(TD.sun); sun.intensity = TD.si * (k === 'night' ? 1.2 : 1); const fill = { dawn: ['#b4b4d8', '#4a4040'], day: ['#cfe0f8', '#5a5440'], golden: ['#a8b8e8', '#5a4834'], dusk: ['#8a88cc', '#3a3044'], night: ['#6c84d0', '#1a1e2c'] }[k];
+      hemi.intensity = TD.aI; hemi.color.set(fill[0]); hemi.groundColor.set(fill[1]); WIN.value = { day: 0, dawn: 0.5, golden: 0.9, dusk: 3.2, night: 4.5 }[k]; if (SMOKE.mat) SMOKE.mat.uniforms.col.value.set(k === 'night' ? '#3a4058' : k === 'dusk' ? '#7a7088' : '#b8b4b0');
       Rr.toneMappingExposure = TD.exp; scene.environmentIntensity = TD.env; GLOW.value = k === 'night' || k === 'dusk' ? 1 : 0;
-      for (const m of IMP_MATS) m.color.setScalar(k === 'night' ? 0.12 : k === 'dusk' ? 0.35 : k === 'dawn' ? 0.7 : 0.85);
+      for (const m of IMP_MATS) m.color.setScalar(k === 'night' ? 0.3 : k === 'dusk' ? 0.5 : k === 'dawn' ? 0.75 : 0.85);
       if (motes) { const mu = motes.material.uniforms; mu.col.value.set(k === 'night' || k === 'dusk' ? '#d8ff9a' : '#fff4d8'); mu.blink.value = k === 'night' || k === 'dusk' ? 1 : 0; mu.size.value = k === 'night' ? 0.22 : 0.08; mu.amt.value = k === 'night' ? 1.6 : k === 'dusk' ? 1 : 0.3; }
       W.envT = 999; }
   }
@@ -635,7 +772,7 @@ const World = (() => {
     AV.inited = false; AV.camInit = false; moodTickCam(0.016); flight(0.016); followCam(0.016);
     updateTiles(cam.position.x, cam.position.z, null, true); updateGrass(cam.position.x, cam.position.z, null, true);
     ORB.land.forEach(L => { ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null;
-    HORSE.on = false; HORSE.obj.visible = false;
+    HERD.on = false; for (const H of HERD.list) H.obj.visible = false; for (const F of FOXES) { F.on = false; F.obj.visible = false; }
   }
 
   // ---------------- camera director ----------------
@@ -860,10 +997,10 @@ const World = (() => {
     W.level += (M.level - W.level) * Math.min(1, dt * 0.6); W.levelSlow += (M.level - W.levelSlow) * Math.min(1, dt * 0.05);
     W.hit *= Math.exp(-dt * 5); W.kick *= Math.exp(-dt * 6); W.flare *= Math.exp(-dt * 3); W.chordFlash *= Math.exp(-dt * 1.2); W.swell *= Math.exp(-dt * 0.7);
     U.windAmp.value = (M.calm ? 0.12 : 0.18) + W.level * (M.calm ? 0.2 : 0.45); U.cloudSpeed.value = 0.01 + W.level * 0.015;
-    moodTickCam(dt); flight(dt); followCam(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt);
+    moodTickCam(dt); flight(dt); followCam(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
     updateTiles(cam.position.x, cam.position.z, 6); updateGrass(cam.position.x, cam.position.z, W.t < 0.3 ? null : 4);
     pumpContent(false);
-    if (frames % 3 === 0 || W.t < 0.3) { cam.updateMatrixWorld(); pmat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(pmat); cullSet(trees, NEAR_TREE, 1700); cullSet(rocks, 600, 600); cullSet(props, 3000, 3000); }
+    if (frames % 3 === 0 || W.t < 0.3) { cam.updateMatrixWorld(); pmat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(pmat); cullSet(trees, NEAR_TREE, 1700); cullSet(rocks, 600, 600); cullSet(props, 3000, 3000); if (frames % 30 === 0) gatherChimneys(); }
     W.ambBird -= dt; if (W.ambBird < 0) { W.ambBird = R(30, 60); flock(); }
     updateStreaks(dt); streakMesh.material.uniforms.col.value.setScalar(curTod === 'night' ? 0.25 : 0.9);
     // shadow box follows what the camera looks at, snapped to texels to avoid shimmer
@@ -960,6 +1097,8 @@ const World = (() => {
     get times() { return [{ key: 'auto', name: 'Auto' }].concat(TOD_ORDER.map(k => ({ key: k, name: TOD[k].name }))); },
     get theme() { return cur; }, get themeName() { return SCN[cur].name + ' · ' + TD.name; }, get want() { return want; },
     set letterbox(v) { W.letterbox = !!v; resize(); }, get mode() { return mode; }, get ok() { return !!Rr; }, get ready() { return ready; },
+    _villages() { return villages.map(v => ({ x: v.x, z: v.z, d: v.d })); },
+    _goto(x, y, z, yaw) { AV.pos.set(x, y, z); AV.yaw = yaw; AV.pitch = 0; W.d = -z; AV.camInit = false; AV.lastInput = W.t; pumpContent(true); updateTiles(x, z, null, true); updateGrass(x, z, null, true); },
     _dbg() { return { AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
     _shot(k) { const m = { low: 0.02, mid: 0.45, high: 0.98 }[k]; if (m != null) { GL.mood = m; W.levelSlow = 0.4; glideReset(); } },
     _ff(n, dt, f) { W.noRender = true; for (let i = 0; i < n; i++) frameLive(dt, Object.assign({ level: 0.5, pitch: 0.5, active: true, tempoConf: 0.9, barDur: 2, downbeatIn: 2 - ((W.t % 2) + 2) % 2 }, f || {}, { onsets: i % 7 === 0 ? [Math.random()] : [], kickHit: i % 15 === 0 ? 1 : 0 }), {}); W.noRender = false; composer.render(); } };

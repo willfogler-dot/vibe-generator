@@ -16,4 +16,4 @@ There is no direct Spotify connection. Nothing is recorded or uploaded.
 
 The previous version is at `/classic/`. Plans are in [ROADMAP.md](ROADMAP.md).
 
-Credits: Three.js (MIT), EZ-Tree by Daniel Greenheck (MIT; bark textures from Poly Haven and TextureCan, CC0), horse and bird models from the three.js examples.
+Credits: Three.js (MIT), EZ-Tree by Daniel Greenheck (MIT; bark textures from Poly Haven and TextureCan, CC0), horse and bird models from the three.js examples, Fox model by PixelMannen (CC0) with rigging by @tomkranis and glTF conversion by @AsoboStudio and @scurest (CC-BY 4.0), via the Khronos glTF sample assets.
