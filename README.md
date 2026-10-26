@@ -1,15 +1,14 @@
 # Vibe Generator
 
-Pick music on Spotify and ride a 3D world that reacts to it. MIDI files can also play as jazz covers, and a Spotify song with a matching MIDI gets a ride choreographed to its notes and chords.
+Music TV for your desk. Play anything on your computer (Spotify app, YouTube, anything), share the audio with this page, and it directs a cinematic flight through an open-world landscape that follows the song.
 
-## Setup (once)
-1. Turn on GitHub Pages for this repo (Settings > Pages > Deploy from branch > `main` / root).
-2. Create an app at https://developer.spotify.com/dashboard
-   - Redirect URI: the Pages address of this site, exactly, e.g. `https://<user>.github.io/vibe-generator/`
-   - APIs: Web API and Web Playback SDK
-3. Open the site, paste the app's Client ID, and connect. Spotify Premium is required.
+- **Director:** the camera cuts between shots on the downbeat (low tracking through grass, drone flyovers, orbits around ruins, locked-off wide shots, crane reveals on big moments). Quiet passages get calm shots, loud ones get epic ones.
+- **Scenes:** River Valley, Highlands, Deep Forest, Coastline. Auto picks from the song's mood (energy, tempo, major/minor, brightness).
+- **Time of day:** Dawn, Midday, Golden Hour, Dusk, Night. Auto follows your clock.
+- **Music mapping:** energy sets speed and wind, bass sends gusts rolling through the grass, the melody draws wind streaks, chord changes shift the light.
+- **Jazz covers:** drop in a MIDI file and it plays as a jazz arrangement with its own ride, timed to the notes.
 
 ## Making it react
-Click **Share audio**, choose **Entire screen**, and turn on **Also share system audio** (Chrome or Edge on Windows). The page only measures the sound; nothing is recorded or sent anywhere.
+Click **Share audio**, choose **Entire screen**, and turn on **Also share system audio** (Chrome or Edge on Windows). The page only measures the sound locally; nothing is recorded or sent anywhere. The page does not connect to Spotify or any music service.
 
 MIDI files and settings are stored in your browser only.
