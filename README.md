@@ -3,7 +3,7 @@
 Music TV for your desk. Play anything on your computer (Spotify app, YouTube, anything), share the audio with this page, and it directs a show that follows the song.
 
 **Two picture engines (Settings > Picture):**
-- **Real footage (default):** real drone and timelapse footage of places that look like fantasy (Iceland, Dolomites, Faroe Islands, misty forests, aurora), pulled from Pexels with your free API key and cut to the beat, with grading, light leaks, dust/fireflies and melody wind streaks layered on. Each clip is credited on screen.
+- **Real footage (default):** real drone and timelapse footage of places that look like fantasy (Iceland, Dolomites, Faroe Islands, misty forests, aurora), pulled from Pixabay (or Pexels) with your free API key and cut to the beat, with grading, light leaks, dust/fireflies and melody wind streaks layered on. Each clip is credited on screen.
 - **3D world:** a procedural open-world landscape flown by a beat-synced camera director.
 
 - **Director:** the camera cuts between shots on the downbeat (low tracking through grass, drone flyovers, orbits around ruins, locked-off wide shots, crane reveals on big moments). Quiet passages get calm shots, loud ones get epic ones.

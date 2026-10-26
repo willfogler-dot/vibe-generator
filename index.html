@@ -163,9 +163,9 @@ body.live .transport { display: none; }
   <h2>Settings</h2>
   <div class="field"><h3>Picture</h3>
     <div class="seg" id="engSeg"><button class="btn" type="button" data-v="footage">Real footage</button><button class="btn" type="button" data-v="3d">3D world</button></div></div>
-  <div class="field" id="pxField" hidden><h3>Pexels key</h3>
-    <div class="row"><input type="text" id="pxKey" placeholder="Paste your Pexels API key" autocomplete="off" spellcheck="false" style="flex:1;min-width:0"><button class="btn" type="button" id="pxSaveBtn">Save</button></div>
-    <div class="hint">Footage comes from <a href="https://www.pexels.com" target="_blank" rel="noopener" style="color:var(--amber)">Pexels</a>, free. Each clip is credited on screen.</div></div>
+  <div class="field" id="pxField" hidden><h3>Footage key</h3>
+    <div class="row"><input type="text" id="pxKey" placeholder="Paste your Pixabay API key" autocomplete="off" spellcheck="false" style="flex:1;min-width:0"><button class="btn" type="button" id="pxSaveBtn">Save</button></div>
+    <div class="hint">Footage comes from <a href="https://pixabay.com" target="_blank" rel="noopener" style="color:var(--amber)">Pixabay</a> (a Pexels key also works). Free; each clip is credited on screen.</div></div>
   <div class="field"><h3>Scene</h3>
     <div class="seg" id="worldSeg"></div>
     <div class="hint">Auto picks the landscape from the mood of the song.</div></div>
@@ -199,11 +199,11 @@ body.live .transport { display: none; }
   <div class="card" role="dialog" aria-labelledby="pxTitle">
     <h2 id="pxTitle">One free key for real footage</h2>
     <ol>
-      <li>Open <a href="https://www.pexels.com/api/" target="_blank" rel="noopener">pexels.com/api</a> and sign up (free, about a minute).</li>
-      <li>When it asks what it's for, something like "personal music visualizer" works.</li>
-      <li>Copy your API key and paste it here.</li>
+      <li>Create a free account at <a href="https://pixabay.com/accounts/register/" target="_blank" rel="noopener">pixabay.com</a> (about a minute).</li>
+      <li>While logged in, open <a href="https://pixabay.com/api/docs/#api_search_videos" target="_blank" rel="noopener">pixabay.com/api/docs</a>. Your key is shown in green under <b>Parameters</b>, next to <b>key</b>.</li>
+      <li>Copy it and paste it here.</li>
     </ol>
-    <input type="text" id="pxKey2" placeholder="Pexels API key" autocomplete="off" spellcheck="false">
+    <input type="text" id="pxKey2" placeholder="Pixabay API key (looks like 12345678-abc...)" autocomplete="off" spellcheck="false">
     <div class="hint">The key stays in this browser. Until then the picture stays dark. You can also switch to the 3D world in Settings.</div>
     <div class="row"><button class="btn primary" type="button" id="pxGo">Start footage</button><button class="btn" type="button" id="pxLater">Later</button></div>
   </div>
@@ -1371,7 +1371,7 @@ const World = (() => {
 
 </script>
 <script>
-// ===== Reel: music TV from real footage (Pexels), directed to the beat =====
+// ===== Reel: music TV from real footage (Pixabay or Pexels), directed to the beat =====
 const Reel = (() => {
   const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} } };
   const R = (a, b) => a + (b - a) * Math.random(), pick = a => a[Math.floor(Math.random() * a.length)], clamp = (x, a, b) => x < a ? a : x > b ? b : x;
@@ -1407,7 +1407,19 @@ const Reel = (() => {
     files.sort((a, b) => a.width - b.width);
     return files.find(f => f.width >= want) || files[files.length - 1] || null;
   }
+  const isPixabay = k => /^\d+-[0-9a-f]{16,}$/i.test(k || '');
+  const source = () => isPixabay(key()) ? 'Pixabay' : 'Pexels';
+  async function searchPixabay(q) {
+    const r = await fetch('https://pixabay.com/api/videos/?' + new URLSearchParams({ key: key(), q, video_type: 'film', min_width: '1280', per_page: '60', safesearch: 'true' }));
+    if (r.status === 400 || r.status === 401 || r.status === 403) throw Object.assign(new Error('Pixabay rejected the API key. Check it in Settings.'), { fatal: true });
+    if (r.status === 429) throw Object.assign(new Error('Pixabay rate limit reached. Footage resumes in a minute.'), { fatal: true });
+    if (!r.ok) throw new Error('Pixabay error ' + r.status);
+    const want = innerWidth * (devicePixelRatio || 1) > 1500 ? ['medium', 'small', 'large'] : ['small', 'medium'];
+    return ((await r.json()).hits || []).map(h => { const f = want.map(k => h.videos && h.videos[k]).find(x => x && x.url && x.width >= 1200 && x.width >= x.height * 1.4);
+      return f ? { id: 'pb' + h.id, duration: h.duration, url: h.pageURL, user: { name: h.user }, video_files: [{ file_type: 'video/mp4', width: f.width, height: f.height, link: f.url }] } : null; }).filter(Boolean);
+  }
   async function search(q) {
+    if (isPixabay(key())) return searchPixabay(q);
     const r = await fetch('https://api.pexels.com/videos/search?' + new URLSearchParams({ query: q, orientation: 'landscape', size: 'medium', per_page: '40' }), { headers: { Authorization: key() } });
     if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Pexels rejected the API key. Check it in Settings.'), { fatal: true });
     if (r.status === 429) throw Object.assign(new Error('Pexels hourly limit reached. Footage resumes within the hour.'), { fatal: true });
@@ -1420,8 +1432,8 @@ const Reel = (() => {
     const o = {}; for (const t of ['calm', 'mid', 'epic']) o[t] = base[t].map((q, i) => i === 0 && T.add ? q + T.add : q); return o;
   }
   async function ensurePool(scene, tod) {
-    const id = scene + ':' + tod; if (pools[id] && pools[id].items.length) return pools[id]; if (fetching[id]) return fetching[id];
-    if (!key()) { status = 'nokey'; showMsg('Add your free Pexels key in Settings to start the footage.'); return null; }
+    const id = scene + ':' + tod + ':' + source(); if (pools[id] && pools[id].items.length) return pools[id]; if (fetching[id]) return fetching[id];
+    if (!key()) { status = 'nokey'; showMsg('Add your free Pixabay key in Settings to start the footage.'); return null; }
     try { const c = JSON.parse(ls.get('vg.px.' + id) || 'null'); if (c && Date.now() - c.t < 36e5 * 24 && c.items.length > 12) return (pools[id] = c); } catch (e) {}
     const P = pools[id] = { t: Date.now(), items: [] }, Q = queriesFor(scene, tod), seen = new Set();
     fetching[id] = (async () => {
@@ -1431,7 +1443,7 @@ const Reel = (() => {
           for (const v of vs) { if (seen.has(v.id) || v.duration < 7) continue; const f = bestFile(v); if (!f) continue; seen.add(v.id);
             P.items.push({ id: v.id, tier, q: q.replace(/ (sunrise|sunset|twilight)$/, ''), dur: v.duration, src: f.link, by: v.user?.name || 'Pexels', url: v.url }); }
           if (P.items.length && !live) startFirst();
-        } catch (e) { if (e.fatal) { showMsg(e.message); break; } if (e instanceof TypeError) { showMsg('The browser could not reach Pexels. Check your connection or network filter.'); break; } }
+        } catch (e) { if (e.fatal) { showMsg(e.message); break; } if (e instanceof TypeError) { showMsg('The browser could not reach ' + source() + '. Check your connection or network filter.'); break; } }
       }
       if (P.items.length > 12) ls.set('vg.px.' + id, JSON.stringify(P));
       delete fetching[id]; return P;
@@ -1471,7 +1483,7 @@ const Reel = (() => {
   // ---------- shots ----------
   function tierNow() { const lv = W.level, r = Math.random(); let t = lv < 0.36 ? 'calm' : lv < 0.64 ? 'mid' : 'epic'; if (r < 0.22) t = t === 'calm' ? 'mid' : t === 'epic' ? 'mid' : pick(['calm', 'epic']); return W.calm && t === 'epic' ? 'mid' : t; }
   function chooseClip() {
-    const P = pools[cur + ':' + curTod] || Object.values(pools).find(p => p.items.length); if (!P || !P.items.length) return null;
+    const P = pools[cur + ':' + curTod + ':' + source()] || Object.values(pools).find(p => p.items.length); if (!P || !P.items.length) return null;
     const tier = tierNow(); let c = P.items.filter(x => x.tier === tier && !W.recent.includes(x.id)); if (!c.length) c = P.items.filter(x => !W.recent.includes(x.id)); if (!c.length) c = P.items;
     const clip = pick(c); W.recent.push(clip.id); if (W.recent.length > Math.min(30, P.items.length - 2)) W.recent.shift(); return clip;
   }
@@ -1494,7 +1506,7 @@ const Reel = (() => {
     if (old) { old.v.style.zIndex = 1; fading = old; setTimeout(() => { if (old !== live) { old.v.style.opacity = 0; old.v.pause(); } if (fading === old) fading = null; }, fade ? 750 : 30); }
     W.shotT = 0; W.shotLen = shotLength(); const z = Math.random() < 0.5; W.kb = { s0: z ? R(1.03, 1.06) : R(1.09, 1.13), s1: z ? R(1.09, 1.13) : R(1.03, 1.06), x0: R(-1.5, 1.5), y0: R(-1, 1), x1: R(-1.5, 1.5), y1: R(-1, 1), leak: pick([[0.1, 0.05], [0.9, 0.08], [0.85, 0.9], [0.12, 0.85]]) };
     if (big && !W.calm) flash.style.transition = 'none', flash.style.opacity = 0.35, requestAnimationFrame(() => { flash.style.transition = 'opacity .9s ease-out'; flash.style.opacity = 0; });
-    const c = live.clip; credit.textContent = cap(c.q) + '  ·  Video by ' + c.by + ' on Pexels'; credit.href = c.url; credit.style.opacity = 1; W.creditT = 3.5;
+    const c = live.clip; credit.textContent = cap(c.q) + '  ·  Video by ' + c.by + ' on ' + source(); credit.href = c.url; credit.style.opacity = 1; W.creditT = 3.5;
     next = freeSlot(); prep(next); return true;
   }
   const cap = s => s.replace(/\b(aerial|drone|timelapse|slow motion|dancing|calm)\b/g, '').replace(/\s+/g, ' ').trim().replace(/^./, m => m.toUpperCase());
@@ -1946,7 +1958,7 @@ const Listen = (() => {
   }
   for (const b of $('engSeg').children) b.classList.toggle('on', b.dataset.v === S.engine);
   $('engSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || v === S.engine) return; S.engine = v; save(); location.reload(); };
-  const pxSave = (inp) => { const v = inp.value.trim(); if (v.length < 20) { toast("That doesn't look like a Pexels API key."); return false; } if (VIS && VIS.setKey) VIS.setKey(v); toast('Key saved. Loading footage…'); return true; };
+  const pxSave = (inp) => { const v = inp.value.trim(); if (v.length < 20) { toast("That doesn't look like an API key."); return false; } if (VIS && VIS.setKey) VIS.setKey(v); toast('Key saved. Loading footage…'); return true; };
   $('pxSaveBtn').onclick = () => pxSave($('pxKey'));
   $('pxGo').onclick = () => { if (pxSave($('pxKey2'))) $('pxHelp').hidden = true; };
   $('pxLater').onclick = () => { $('pxHelp').hidden = true; };
