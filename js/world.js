@@ -172,7 +172,7 @@ const World = (() => {
           float n = fract(sin(dot(vUv*(time + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * grain;
           c *= 1.0 - fade; if (abs(vUv.y - 0.5) > 0.5 - bar) c = vec3(0.0); gl_FragColor = vec4(c, 1.0); }` });
     composer.addPass(grade);
-    resize(); addEventListener('resize', resize);
+    resize(); addEventListener('resize', resize); bindInput();
     applyTod(wantTod === 'auto' ? clockTod() : wantTod);
     loadAssets().then(() => buildStatic()).then(() => { applyTod(curTod); applyScene(cur); ready = true; }).catch(e => { console.error(e); });
   }
@@ -261,7 +261,7 @@ const World = (() => {
     t.mesh.geometry = g; t.mesh.visible = true; t.mesh.castShadow = t.segs >= 48;
   }
   function placeTile(w) { const key = w.ix + ',' + w.iz; let t = tiles.get(key);
-    if (!t) { t = spare.pop(); if (!t) { t = { geos: {}, mesh: new THREE.Mesh(tileGeo(12), terrMat) }; t.mesh.receiveShadow = true; scene.add(t.mesh); } tiles.set(key, t); }
+    if (!t) { t = spare.pop(); if (!t) { t = { geos: {}, mesh: new THREE.Mesh(tileGeo(12), terrMat) }; t.mesh.receiveShadow = true; t.mesh.userData.kind = 'ground'; scene.add(t.mesh); } tiles.set(key, t); }
     t.ix = w.ix; t.iz = w.iz; t.segs = w.segs; if (!t.geos[w.segs]) t.geos[w.segs] = tileGeo(w.segs); fillTile(t); }
   function updateTiles(x, z, budget, force) {
     const cix = Math.floor(x / TILE), ciz = Math.floor(z / TILE), key = cix + ',' + ciz;
@@ -280,7 +280,7 @@ const World = (() => {
     return parts;
   }
   function Batch(parts, cap, o = {}) {
-    const meshes = parts.map(p => { const m = new THREE.InstancedMesh(p.geo, p.mat, cap); m.count = 0; m.frustumCulled = false; m.castShadow = !!o.shadow; m.receiveShadow = true; if (p.depth) m.customDepthMaterial = p.depth; scene.add(m); return m; });
+    const meshes = parts.map(p => { const m = new THREE.InstancedMesh(p.geo, p.mat, cap); m.count = 0; m.userData.kind = o.kind || 'thing'; m.frustumCulled = false; m.castShadow = !!o.shadow; m.receiveShadow = true; if (p.depth) m.customDepthMaterial = p.depth; scene.add(m); return m; });
     let n = 0;
     return { meshes, cap, begin() { n = 0; }, add(mtx) { if (n >= cap) return; for (const m of meshes) m.setMatrixAt(n, mtx); n++; }, end() { for (const m of meshes) { m.count = n; m.instanceMatrix.needsUpdate = true; } },
       dispose() { for (const m of meshes) { scene.remove(m); m.dispose(); } } };
@@ -335,7 +335,7 @@ const World = (() => {
       const sg = new THREE.Matrix4().makeScale(s, s, s), bg = t.branchesMesh.geometry.clone().applyMatrix4(sg), lg = t.leavesMesh.geometry.clone().applyMatrix4(sg);
       const grp = new THREE.Group(); grp.add(new THREE.Mesh(bg, t.branchesMesh.material)); grp.add(new THREE.Mesh(lg, t.leavesMesh.material));
       const imp = makeImpostor(grp, h, w); IMP_MATS.push(imp.mat);
-      trees.variants.push({ name, kind, h, r: Math.max(h, w) * 0.6, near: Batch([{ geo: bg, mat: bm }, { geo: lg, mat: lm, depth }], kind === 'bush' ? 300 : 220, { shadow: true }), far: Batch([imp], 2500), giant: name === 'Oak Medium' });
+      trees.variants.push({ name, kind, h, r: Math.max(h, w) * 0.6, near: Batch([{ geo: bg, mat: bm }, { geo: lg, mat: lm, depth }], kind === 'bush' ? 300 : 220, { shadow: true, kind: 'tree' }), far: Batch([imp], 2500, { kind: 'tree' }), giant: name === 'Oak Medium' });
     }
   }
 
@@ -343,34 +343,35 @@ const World = (() => {
   const rocks = ItemSet('rocks'), props = ItemSet('props');
   function stoneMaterial(tint = '#ffffff', mossy = true) {
     const m = new THREE.MeshStandardMaterial({ color: C(tint), roughness: 0.9 });
-    m.onBeforeCompile = sh => { Object.assign(sh.uniforms, { tRock: { value: A.rockT }, tGrass: { value: A.grassT }, glowAmt: GLOW });
+    m.onBeforeCompile = sh => { Object.assign(sh.uniforms, { tRock: { value: A.rockT }, tGrass: { value: A.grassT }, glowAmt: GLOW, clickPos: CLICK.pos, clickAge: CLICK.age, clickBeat: CLICK.beat });
       sh.vertexShader = 'varying vec3 vWP; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
         vec4 wp4 = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
           wp4 = instanceMatrix * wp4;
         #endif
         vWP = (modelMatrix * wp4).xyz; vWN = normalize(mat3(modelMatrix) * transformedNormal);`);
-      sh.fragmentShader = 'varying vec3 vWP; varying vec3 vWN; uniform sampler2D tRock, tGrass; uniform float glowAmt;\n' + NOISE + '\n' + sh.fragmentShader.replace('#include <map_fragment>', `
+      sh.fragmentShader = 'varying vec3 vWP; varying vec3 vWN; uniform sampler2D tRock, tGrass; uniform float glowAmt, clickAge, clickBeat; uniform vec3 clickPos;\n' + NOISE + '\n' + sh.fragmentShader.replace('#include <map_fragment>', `
         vec3 nW = normalize((inverse(viewMatrix) * vec4(normalize(vNormal), 0.0)).xyz); vec3 bw = pow(abs(nW), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
         vec3 rc = texture2D(tRock, vWP.zy * 0.25).rgb * bw.x + texture2D(tRock, vWP.xz * 0.25).rgb * bw.y + texture2D(tRock, vWP.xy * 0.25).rgb * bw.z;
         ${mossy ? 'float moss = smoothstep(0.55, 0.85, nW.y + (gfbm(vWP.xz*0.3) - 0.5)*0.4); rc = mix(rc, texture2D(tGrass, vWP.xz*0.3).rgb*0.8, moss);' : ''}
         diffuseColor.rgb *= rc * 1.15;`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          float rune = step(0.93, fract(vWP.y * 0.9 + gn(vWP.xz * 0.7) * 0.3)) * step(0.4, gn(vWP.xz * 2.1 + vWP.y)); totalEmissiveRadiance += vec3(0.3, 0.9, 1.0) * rune * glowAmt * 3.0;`);
+          float rune = step(0.93, fract(vWP.y * 0.9 + gn(vWP.xz * 0.7) * 0.3)) * step(0.4, gn(vWP.xz * 2.1 + vWP.y)); float touch = exp(-length(vWP - clickPos) / 16.0) * exp(-clickAge / 14.0) * step(0.0, clickAge) * smoothstep(0.0, 1.2, clickAge * 3.0 - length(vWP - clickPos) * 0.15);
+          totalEmissiveRadiance += vec3(0.3, 0.9, 1.0) * (rune * (glowAmt * 3.0 + touch * (4.0 + clickBeat * 10.0)) + touch * 0.08);`);
     };
     m.customProgramCacheKey = () => 'stone' + (mossy ? 1 : 0); return m;
   }
-  const GLOW = { value: 0 };
+  const GLOW = { value: 0 }, CLICK = { pos: { value: V(0, -9999, 0) }, age: { value: 999 }, beat: { value: 0 } };
   async function buildStatic() {
     terrMat = makeTerrainMat();
     await buildTrees();
     // rocks
     const rmat = stoneMaterial('#c8c0b4', true);
     for (const g of A.rocks) { const parts = kitFromScene(g.scene, 0.12).map(p => ({ geo: p.geo, mat: rmat })); const bb = new THREE.Box3(); for (const p of parts) { p.geo.computeBoundingBox(); bb.union(p.geo.boundingBox); }
-      rocks.variants.push({ r: bb.getSize(V()).length() * 0.5, near: Batch(parts, 400, { shadow: true }) }); }
+      rocks.variants.push({ r: bb.getSize(V()).length() * 0.5, near: Batch(parts, 400, { shadow: true, kind: 'rock' }) }); }
     // ruins + floating isles + the giant tree use the props set
     const smat = stoneMaterial('#d8d0c4', true);
-    for (let k = 0; k < 3; k++) props.variants.push({ r: 14, near: Batch([{ geo: makeRuin(k), mat: smat }], 20, { shadow: true }), kind: 'ruin' });
+    for (let k = 0; k < 3; k++) props.variants.push({ r: 14, near: Batch([{ geo: makeRuin(k), mat: smat }], 20, { shadow: true, kind: 'ruin' }), kind: 'ruin' });
     const imat = stoneMaterial('#b8ac9c', false), igrass = new THREE.MeshStandardMaterial({ map: A.grassT, roughness: 0.95 });
     for (let k = 0; k < 2; k++) { const isl = makeIsland(k * 2.7); props.variants.push({ r: 1.6, near: Batch([{ geo: isl.rock, mat: imat }, { geo: isl.top, mat: igrass }], 12, { shadow: false }), kind: 'island' }); }
     { const gt = trees.variants.find(v => v.giant); props.variants.push({ r: gt.r, near: Batch(gt.near.meshes.map(m => ({ geo: m.geometry, mat: m.material })), 6, { shadow: true }), kind: 'giant' }); }
@@ -387,7 +388,7 @@ const World = (() => {
         fragmentShader: `uniform float amt; uniform vec3 col; varying float vA; void main(){ float r = length(gl_PointCoord - 0.5); float a = pow(smoothstep(0.5, 0.0, r), 2.0); gl_FragColor = vec4(col * a * vA * amt, 1.0); }` }));
       motes.frustumCulled = false; scene.add(motes); }
     water = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: C('#0e2a30'), roughness: 0.05, metalness: 0.0, normalMap: A.waterN, normalScale: new THREE.Vector2(0.35, 0.35) }));
-    A.waterN.repeat.set(8000 / 14, 8000 / 14); water.receiveShadow = true; scene.add(water);
+    A.waterN.repeat.set(8000 / 14, 8000 / 14); water.receiveShadow = true; water.userData.kind = 'water'; scene.add(water); buildInteract(); buildAvatar();
   }
   let water, motes;
   function makeRuin(k) {
@@ -595,8 +596,8 @@ const World = (() => {
     for (let i = 0; i < 7; i++) { const b = A.stork.scene.clone(); b.scale.setScalar(0.005); b.traverse(o => { if (o.isMesh) { o.castShadow = false; o.material = o.material.clone(); o.material.color.setRGB(0.35, 0.33, 0.32); } });
       const mx = new THREE.AnimationMixer(b); const act = mx.clipAction(A.stork.animations[0]); act.play(); act.time = Math.random(); b.visible = false; scene.add(b); BIRDS.push({ obj: b, mx, on: false, p: V(), v: V(), life: 0 }); }
   }
-  function flock() {
-    if (curTod === 'night') return; cam.getWorldDirection(tv); const side = rnd() < 0.5 ? -1 : 1, base = V(cam.position.x + tv.x * 80 + side * 60, cam.position.y + R(12, 35), cam.position.z + tv.z * 80), vel = V(-side * R(7, 9), R(0, 0.8), R(-3, 1));
+  function flock(from) {
+    if (curTod === 'night') return; cam.getWorldDirection(tv); const side = rnd() < 0.5 ? -1 : 1, base = from ? from.clone() : V(cam.position.x + tv.x * 80 + side * 60, cam.position.y + R(12, 35), cam.position.z + tv.z * 80), vel = from ? V(R(-1, 1) * 8, R(2.5, 4), R(-1, 1) * 8) : V(-side * R(7, 9), R(0, 0.8), R(-3, 1));
     BIRDS.forEach((b, k) => { const row = Math.ceil(k / 2), s = k % 2 ? 1 : -1; b.p.set(base.x + side * row * 2.2, base.y + R(-0.5, 0.5), base.z + s * row * 2); b.v.copy(vel); b.on = true; b.life = 22; b.obj.visible = true; b.obj.rotation.y = Math.atan2(vel.x, vel.z); });
   }
   function updateCreatures(dt) {
@@ -631,7 +632,7 @@ const World = (() => {
     cur = k; SC = SCN[k];
     TU.gTint.value.set(SC.tint); GRASS_COL.set(SC.card || '#7c9a48'); TU.dTint.value.set(SC.dryTint); TU.dryAmt.value = SC.dry; TU.snowLine.value = SC.snow; TU.waterLevel.value = SC.water;
     water.position.y = SC.water; resetContent();
-    glideReset(); glideCam(0.016);
+    AV.inited = false; AV.camInit = false; moodTickCam(0.016); flight(0.016); followCam(0.016);
     updateTiles(cam.position.x, cam.position.z, null, true); updateGrass(cam.position.x, cam.position.z, null, true);
     ORB.land.forEach(L => { ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null;
     HORSE.on = false; HORSE.obj.visible = false;
@@ -719,6 +720,122 @@ const World = (() => {
     const turn = pathX(d + 70) - 2 * pathX(d + 35) + pathX(d); GL.roll += (clamp(-turn * 0.004, -0.06, 0.06) - GL.roll) * Math.min(1, dt * 0.4); cam.rotateZ(GL.roll);
     const fov = mix(46, 56, m); GL.fov += (fov - GL.fov) * Math.min(1, dt * 0.3); if (Math.abs(cam.fov - GL.fov) > 0.01) { cam.fov = GL.fov; cam.updateProjectionMatrix(); }
   }
+  // ---------------- you: a creature that flies the valley; autopilot whenever you let go ----------------
+  const AV = { kind: 'bird', bird: null, mx: null, spirit: null, pos: V(), yaw: 0, pitch: 0, roll: 0, speed: 9, ctl: 0, lastInput: -99, inited: false, boost: 0,
+    orbYaw: 0, orbPitch: 0, camDist: 6.5, camP: V(), camL: V(), camInit: false, drag: null, steer: { yaw: 0, pitch: 0 }, f: V(0, 0, -1) };
+  const KEYS = {}, FLY_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']);
+  const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const latAt = d => Math.sin(d * 0.0043 + 0.7) * 16 + Math.sin(d * 0.0011 + 2.0) * 34 * GL.mood;
+  const pathYaw = d => Math.atan2(pathX(d + 10) - pathX(d), 10);
+  function moodTickCam(dt) {
+    const t = W.t, drift = 0.42 + 0.3 * Math.sin(t * 0.019 + 1.3) + 0.16 * Math.sin(t * 0.0071 + 4.1);
+    GL.mood += (clamp(drift + (W.levelSlow - 0.4) * 0.6, 0, 1) - GL.mood) * Math.min(1, dt * 0.06);
+  }
+  function lineY(x, z, fx, fz) { let g = groundAt(x, z); for (const a of [8, 20, 36]) g = Math.max(g, groundAt(x + fx * a, z + fz * a) - a * 0.05); const m = GL.mood; return g + mix(3.0, 55, m * m * (3 - 2 * m)); }
+  function buildAvatar() {
+    const b = A.stork.scene.clone(); b.scale.setScalar(0.009); b.rotation.order = 'YXZ';
+    b.traverse(o => { if (o.isMesh) { o.castShadow = true; o.material = o.material.clone(); o.material.color.setRGB(0.92, 0.9, 0.86); o.material.roughness = 0.8; } });
+    AV.mx = new THREE.AnimationMixer(b); AV.mx.clipAction(A.stork.animations[0]).play(); AV.bird = b; scene.add(b);
+    const sp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 16), new THREE.MeshBasicMaterial({ color: C(5, 4.2, 2.8), fog: false }));
+    sp.add(new THREE.PointLight(0xffd9a0, 18, 24, 2)); AV.spirit = sp; scene.add(sp);
+    setAvatar(AV.kind);
+  }
+  function setAvatar(k) { AV.kind = k; if (AV.bird) { AV.bird.visible = k === 'bird'; AV.spirit.visible = k === 'spirit'; } AV.camInit = false; }
+  function flight(dt) {
+    const p = AV.pos;
+    if (!AV.inited) { const d = W.d; onPath(d, latAt(d), p); AV.yaw = pathYaw(d); AV.pitch = 0; p.y = lineY(p.x, p.z, Math.sin(AV.yaw), -Math.cos(AV.yaw)); AV.inited = true; }
+    let iy = 0, ip = 0; if (KEYS.a || KEYS.arrowleft) iy -= 1; if (KEYS.d || KEYS.arrowright) iy += 1; if (KEYS.w || KEYS.arrowup) ip += 1; if (KEYS.s || KEYS.arrowdown) ip -= 1;
+    iy += AV.steer.yaw; ip += AV.steer.pitch; const boost = KEYS.shift ? 1 : 0; if (iy || ip || boost) AV.lastInput = W.t;
+    const idle = W.t - AV.lastInput, ctlT = idle < 4.5 ? 1 : 0; AV.ctl += (ctlT - AV.ctl) * Math.min(1, dt * (ctlT ? 5 : 0.35));
+    const fx = Math.sin(AV.yaw), fz = -Math.cos(AV.yaw), dB = -p.z;
+    // autopilot: steer toward the scenic line ahead
+    onPath(dB + 45, latAt(dB + 45), tv); tv.y = lineY(tv.x, tv.z, fx, fz);
+    const aYaw = clamp(wrapA(Math.atan2(tv.x - p.x, -(tv.z - p.z)) - AV.yaw) * 0.7, -0.4, 0.4);
+    const aPitch = (clamp(Math.atan2(tv.y - p.y, Math.hypot(tv.x - p.x, tv.z - p.z)), -0.3, 0.3) - AV.pitch) * 1.1;
+    let yawRate = mix(aYaw, iy * 1.05, AV.ctl), pitchRate = mix(aPitch, ip ? ip * 0.85 : -AV.pitch * 0.7, AV.ctl);
+    // stay in the valley and keep heading broadly downstream (gentle, also while you steer)
+    const off = p.x - pathX(dB); if (Math.abs(off) > 170) yawRate += wrapA(Math.atan2(-Math.sign(off), 0.6) - AV.yaw) * 0.5 * clamp((Math.abs(off) - 170) / 80, 0, 1);
+    const fwd = Math.cos(wrapA(AV.yaw - pathYaw(dB))); if (fwd < 0.35) yawRate += wrapA(pathYaw(dB) - AV.yaw) * 0.8 * (0.35 - fwd);
+    // never fly into the ground
+    let g = groundAt(p.x, p.z); for (const a of [6, 14, 28]) g = Math.max(g, groundAt(p.x + fx * a, p.z + fz * a) - a * 0.06);
+    const clr = p.y - g; if (clr < 4) pitchRate += (4 - clr) * 0.45; if (clr > 170) pitchRate -= 0.25;
+    AV.yaw = wrapA(AV.yaw + yawRate * dt); AV.pitch = clamp(AV.pitch + pitchRate * dt, -0.5, 0.55);
+    AV.roll += (clamp(-yawRate * 0.9, -0.55, 0.55) - AV.roll) * Math.min(1, dt * 2.5);
+    AV.boost += (boost - AV.boost) * Math.min(1, dt * 2);
+    const sT = 7.5 + 4.5 * W.levelSlow + AV.boost * 10 - Math.sin(AV.pitch) * 6; AV.speed += (sT - AV.speed) * Math.min(1, dt * 0.7);
+    const cp = Math.cos(AV.pitch); AV.f.set(Math.sin(AV.yaw) * cp, Math.sin(AV.pitch), -Math.cos(AV.yaw) * cp);
+    p.addScaledVector(AV.f, AV.speed * dt); p.y = Math.max(p.y, groundAt(p.x, p.z) + 1.4);
+    W.speed = AV.speed * cp; W.d = -p.z;
+    if (AV.bird && AV.kind === 'bird') { const b = AV.bird; b.position.copy(p); b.rotation.set(-AV.pitch, Math.atan2(AV.f.x, AV.f.z), -AV.roll);
+      AV.mx.timeScale = clamp(0.3 + AV.pitch * 2.2 + AV.boost * 0.9 + (AV.speed < 8 ? 0.3 : 0), 0.08, 1.7); AV.mx.update(dt); }
+    if (AV.spirit && AV.kind === 'spirit') { AV.spirit.position.copy(p); AV.spirit.position.y += Math.sin(W.t * 1.7) * 0.15; if (Math.random() < 0.8) ORB.sparks.emit(p.x, p.y, p.z, R(-0.2, 0.2), R(-0.1, 0.2), R(-0.2, 0.2), R(0.8, 1.6), R(0.05, 0.1), tc.setRGB(2.4, 1.9, 1.2)); }
+  }
+  function followCam(dt) {
+    const p = AV.pos, f = AV.f, m = GL.mood, t = W.t; let tgt = tv2, lk = tv3;
+    if (AV.kind === 'none') { tgt.copy(p); lk.copy(p).addScaledVector(f, 35); lk.y -= 2; }
+    else {
+      const autoAng = Math.sin(t * 0.021) * 0.95 + Math.sin(t * 0.0067 + 1) * 0.45;
+      const ang = mix(autoAng, 0, AV.ctl) + AV.orbYaw, elev = clamp(mix(0.1 + 0.22 * m + 0.08 * Math.sin(t * 0.017), 0.16, AV.ctl) + AV.orbPitch, -0.3, 1.2);
+      const dist = AV.camDist * mix(1 + 0.45 * m, 1, AV.ctl), by = AV.yaw + Math.PI + ang;
+      tgt.set(p.x + Math.sin(by) * Math.cos(elev) * dist, p.y + Math.sin(elev) * dist, p.z - Math.cos(by) * Math.cos(elev) * dist);
+      lk.copy(p).addScaledVector(f, 4);
+    }
+    tgt.y = Math.max(tgt.y, groundAt(tgt.x, tgt.z) + 0.8);
+    if (!AV.camInit) { AV.camP.copy(tgt); AV.camL.copy(lk); AV.camInit = true; }
+    AV.camP.lerp(tgt, 1 - Math.exp(-dt * (AV.kind === 'none' ? 8 : 4))); AV.camL.lerp(lk, 1 - Math.exp(-dt * 5));
+    cam.position.copy(AV.camP); cam.lookAt(AV.camL); if (AV.kind === 'none') cam.rotateZ(AV.roll * 0.4);
+    if (!AV.drag && W.t - AV.lastInput > 1.5) { AV.orbYaw *= Math.exp(-dt * 0.5); AV.orbPitch *= Math.exp(-dt * 0.5); }
+    const fov = mix(48, 56, m); GL.fov += (fov - GL.fov) * Math.min(1, dt * 0.3); if (Math.abs(cam.fov - GL.fov) > 0.01) { cam.fov = GL.fov; cam.updateProjectionMatrix(); }
+  }
+  // ---- touch the world: things react, and with a beat locked they land on the next beat ----
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), FXQ = [], RIP = []; let ripI = 0, hintEl = null;
+  function buildInteract() {
+    const rg = new THREE.RingGeometry(0.92, 1, 64).rotateX(-Math.PI / 2);
+    for (let i = 0; i < 12; i++) { const r = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ color: C(1.4, 1.5, 1.6), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); r.visible = false; scene.add(r); RIP.push({ m: r, age: 99, size: 1 }); }
+  }
+  function atBeat(fn) { if (W.beatPer > 0.2 && W.nextBeat > W.t && W.nextBeat - W.t < 1.2) FXQ.push({ t: W.nextBeat, fn }); else fn(); }
+  function ripple(P, size) { const r = RIP[ripI]; ripI = (ripI + 1) % RIP.length; r.age = 0; r.size = size; r.m.position.set(P.x, SC.water + 0.06, P.z); }
+  function burst(P, n, col, up, spread, life) { for (let i = 0; i < n; i++) { const a = rnd() * 6.283, sp = R(0.3, 1) * spread; ORB.sparks.emit(P.x + R(-0.5, 0.5), P.y + R(-0.3, 0.6), P.z + R(-0.5, 0.5), Math.cos(a) * sp, R(0.2, 1) * up, Math.sin(a) * sp, R(life * 0.6, life * 1.3), R(0.05, 0.11), col); } }
+  function gustAt(P, amp) { const g = U.gust.value[W.gustI]; W.gustI = (W.gustI + 1) % 4; g.set(P.x, P.z, W.t, amp); }
+  function interact(cx, cy) {
+    const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, cam); ray.far = 900;
+    const objs = []; for (const t of tiles.values()) if (t.mesh.visible) objs.push(t.mesh); if (water.visible) objs.push(water);
+    for (const set of [trees, rocks, props]) for (const v of set.variants) for (const b of [v.near, v.far]) if (b) for (const mm of b.meshes) if (mm.count) objs.push(mm);
+    const hits = ray.intersectObjects(objs, false); if (!hits.length) return;
+    const h = hits[0], P = h.point.clone(); let kind = h.object.userData.kind || 'ground'; if (kind === 'ground' && P.y < SC.water + 0.05) kind = 'water';
+    atBeat(() => react(kind, P)); return kind;
+  }
+  function react(kind, P) {
+    const lv = 0.7 + W.level * 0.6, gap = W.beatPer > 0.2 ? W.beatPer / 2 : 0.28;
+    if (kind === 'water') { for (let i = 0; i < 3; i++) FXQ.push({ t: W.t + i * gap, fn: () => ripple(P, 1 + i * 0.35) }); burst(V(P.x, SC.water + 0.1, P.z), 14, tc.setRGB(1.2, 1.3, 1.4), 2.2, 0.9, 0.9); }
+    else if (kind === 'tree') { gustAt(P, 1.0 * lv); burst(P, 34, tc.setRGB(1.1, 1.25, 0.35), 0.4, 1.4, 2.6); if (rnd() < 0.65) flock(P); }
+    else if (kind === 'ruin') { CLICK.pos.value.copy(P); CLICK.age.value = 0; burst(P, 26, tc.setRGB(0.6, 1.6, 2.0), 2.4, 1.0, 2.2); }
+    else { gustAt(P, 0.85 * lv); burst(P, 22, tc.setRGB(1.6, 1.4, 0.8), 1.4, 1.2, 1.8); }
+  }
+  function updateInteract(dt) {
+    for (let i = FXQ.length - 1; i >= 0; i--) if (FXQ[i].t <= W.t) { const q = FXQ.splice(i, 1)[0]; q.fn(); }
+    for (const r of RIP) { if (r.age > 3) { r.m.visible = false; continue; } r.age += dt; const s = (0.4 + r.age * 3.2) * r.size; r.m.scale.set(s, 1, s); r.m.material.opacity = Math.max(0, 1 - r.age / 2.4) * 0.55; r.m.visible = true; }
+    CLICK.age.value += dt; CLICK.beat.value = W.kick;
+  }
+  function hideHint() { if (hintEl && !hintEl.dataset.gone) { hintEl.dataset.gone = 1; hintEl.style.opacity = 0; try { localStorage.setItem('vg.flyhint', String(+(localStorage.getItem('vg.flyhint') || 0) + 1)); } catch (e) {} } }
+  function bindInput() {
+    const typing = () => /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName);
+    addEventListener('keydown', e => { if (typing()) return; const k = e.key.toLowerCase(); if (FLY_KEYS.has(k)) { KEYS[k] = true; AV.lastInput = W.t; hideHint(); if (k.startsWith('arrow')) e.preventDefault(); } });
+    addEventListener('keyup', e => { KEYS[e.key.toLowerCase()] = false; });
+    addEventListener('blur', () => { for (const k in KEYS) KEYS[k] = false; });
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('pointerdown', e => { AV.drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t: performance.now(), touch: e.pointerType === 'touch', moved: 0 }; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} });
+    canvas.addEventListener('pointermove', e => { const D = AV.drag; if (!D) return; const dx = e.clientX - D.x, dy = e.clientY - D.y; D.x = e.clientX; D.y = e.clientY; D.moved += Math.abs(dx) + Math.abs(dy); if (D.moved < 6) return; AV.lastInput = W.t; hideHint();
+      if (D.touch) { AV.steer.yaw = clamp((e.clientX - D.x0) / 110, -1, 1); AV.steer.pitch = clamp(-(e.clientY - D.y0) / 110, -1, 1); }
+      else { AV.orbYaw -= dx * 0.005; AV.orbPitch = clamp(AV.orbPitch + dy * 0.004, -0.4, 1.0); } });
+    const end = e => { const D = AV.drag; AV.drag = null; AV.steer.yaw = AV.steer.pitch = 0; if (D && D.moved < 6 && performance.now() - D.t < 500) { interact(e.clientX, e.clientY); hideHint(); } };
+    canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', () => { AV.drag = null; AV.steer.yaw = AV.steer.pitch = 0; });
+    canvas.addEventListener('wheel', e => { e.preventDefault(); AV.camDist = clamp(AV.camDist * Math.exp(e.deltaY * 0.001), 4, 40); AV.lastInput = W.t; }, { passive: false });
+    let seen = 0; try { seen = +(localStorage.getItem('vg.flyhint') || 0); } catch (e) {}
+    if (seen < 3) { hintEl = document.createElement('div'); hintEl.textContent = 'Drag to look  ·  WASD or arrows to fly, Shift to soar  ·  Click the world';
+      hintEl.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);font:500 13px/1.4 "Instrument Sans",system-ui,sans-serif;color:#f3e8d6;background:rgba(13,8,16,.55);border:1px solid rgba(241,228,207,.18);padding:9px 16px;border-radius:999px;pointer-events:none;transition:opacity 1.2s;z-index:5;white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis';
+      document.body.appendChild(hintEl); setTimeout(hideHint, 14000); }
+  }
   function directorTick(dt, M) {
     CAM.t += dt;
     if (M.big && CAM.t > 2.5 && W.t - W.lastBig > 14) { W.lastBig = W.t; directorStart(true); return; }
@@ -741,10 +858,9 @@ const World = (() => {
     else if (W.fadeDir < 0) { W.fade = Math.max(0, W.fade - dt / 1.4); if (W.fade <= 0) W.fadeDir = 0; }
     grade.uniforms.fade.value = Math.max(W.fade, M.ending || 0);
     W.level += (M.level - W.level) * Math.min(1, dt * 0.6); W.levelSlow += (M.level - W.levelSlow) * Math.min(1, dt * 0.05);
-    const target = (M.calm ? 4 : 4.5) + (M.calm ? 2.5 : 5) * W.levelSlow; W.speed += (target - W.speed) * Math.min(1, dt * 0.1); W.d += W.speed * dt;
     W.hit *= Math.exp(-dt * 5); W.kick *= Math.exp(-dt * 6); W.flare *= Math.exp(-dt * 3); W.chordFlash *= Math.exp(-dt * 1.2); W.swell *= Math.exp(-dt * 0.7);
     U.windAmp.value = (M.calm ? 0.12 : 0.18) + W.level * (M.calm ? 0.2 : 0.45); U.cloudSpeed.value = 0.01 + W.level * 0.015;
-    updateOrb(dt); glideCam(dt); updateCreatures(dt);
+    moodTickCam(dt); flight(dt); followCam(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt);
     updateTiles(cam.position.x, cam.position.z, 6); updateGrass(cam.position.x, cam.position.z, W.t < 0.3 ? null : 4);
     pumpContent(false);
     if (frames % 3 === 0 || W.t < 0.3) { cam.updateMatrixWorld(); pmat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(pmat); cullSet(trees, NEAR_TREE, 1700); cullSet(rocks, 600, 600); cullSet(props, 3000, 3000); }
@@ -799,7 +915,7 @@ const World = (() => {
     while (S.pB < S.bass.length && S.bass[S.pB].t <= jb) { const e = S.bass[S.pB++]; if (jb - e.t < 1) onBass(0.7); }
     let big = false;
     while (S.pD < S.drums.length && S.drums[S.pD].t <= jb) { const e = S.drums[S.pD++]; if (jb - e.t > 1) continue; if (e.n === 'ride' || e.n === 'tap') W.hit = Math.min(1.2, W.hit + (e.v || 0.6) * 0.5); else if (e.n === 'kick') W.kick = Math.min(1, W.kick + (e.v || 0.6) * 0.8); else if (e.n === 'swell') { W.swell = 1; big = true; onBig(); } }
-    S.last = jb;
+    S.last = jb; W.beatPer = S.spj; W.nextBeat = W.t + (Math.ceil(jb + 1e-3) - jb) * S.spj;
     const ci = chordIdx(S.chords, Math.min(jb, S.lenJb)); if (ci !== S.ci) { onChord(S.chords[ci]); S.ci = ci; }
     const bar = Math.max(0, Math.floor(jb / 4)); const downbeat = bar !== S.bar && bar % 4 === 0; S.bar = bar;
     const E = S.E[Math.min(S.E.length - 1, bar)] ?? 0.4, prevE = S.E[Math.max(0, Math.min(S.E.length - 1, bar - 4))] ?? E; if (downbeat && E - prevE > 0.22) big = true;
@@ -830,17 +946,21 @@ const World = (() => {
       const stepT = busy ? per / 2 : per;
       for (let k = 0; k < 8; k++) { const t = W.t + nextIn + k * stepT; if (t - W.t > 2.6) break; const lastT = ORB.land.length ? ORB.land[ORB.land.length - 1].t : -1; if (t > lastT + stepT * 0.6) scheduleLanding(t, clamp(f.pitch ?? 0.5, 0, 1), 0.7); }
     }
+    if (f.active && (f.tempoConf || 0) > 0.4 && f.barDur > 0.6) { const per = f.barDur / 4; W.beatPer = per; W.nextBeat = W.t + (((f.downbeatIn % per) + per) % per); } else W.beatPer = 0;
     const downbeat = (f.tempoConf || 0) > 0.4 && f.downbeatIn != null && f.downbeatIn < dt * 1.5;
     step(dt, { calm: !!opts.calm, level: f.active ? (f.level || 0) : 0.35, downbeat, big });
   }
 
   return { init, load, frame, live, frameLive, setBaseHue() {}, setTheme, setTime,
     set orb(v) { W.orbOn = !!v; }, get orb() { return W.orbOn; },
+    set avatar(v) { setAvatar(v); }, get avatar() { return AV.kind; },
+    _fly(keys, secs) { for (const k of keys) KEYS[k] = true; W.noRender = true; for (let i = 0; i < secs * 30; i++) frameLive(1 / 30, { level: 0.5, active: false, onsets: [] }, {}); for (const k of keys) KEYS[k] = false; W.noRender = false; composer.render(); return { pos: AV.pos.toArray().map(Math.round), yaw: +AV.yaw.toFixed(2), ctl: +AV.ctl.toFixed(2) }; },
+    _click(x, y) { return interact(x, y); },
     get themes() { return [{ key: 'auto', name: 'Auto' }].concat(SC_ORDER.map(k => ({ key: k, name: SCN[k].name }))); },
     get times() { return [{ key: 'auto', name: 'Auto' }].concat(TOD_ORDER.map(k => ({ key: k, name: TOD[k].name }))); },
     get theme() { return cur; }, get themeName() { return SCN[cur].name + ' · ' + TD.name; }, get want() { return want; },
     set letterbox(v) { W.letterbox = !!v; resize(); }, get mode() { return mode; }, get ok() { return !!Rr; }, get ready() { return ready; },
-    _dbg() { return { W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
+    _dbg() { return { AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
     _shot(k) { const m = { low: 0.02, mid: 0.45, high: 0.98 }[k]; if (m != null) { GL.mood = m; W.levelSlow = 0.4; glideReset(); } },
     _ff(n, dt, f) { W.noRender = true; for (let i = 0; i < n; i++) frameLive(dt, Object.assign({ level: 0.5, pitch: 0.5, active: true, tempoConf: 0.9, barDur: 2, downbeatIn: 2 - ((W.t % 2) + 2) % 2 }, f || {}, { onsets: i % 7 === 0 ? [Math.random()] : [], kickHit: i % 15 === 0 ? 1 : 0 }), {}); W.noRender = false; composer.render(); } };
 })();

@@ -161,6 +161,9 @@ body.loading .loadmsg { display: block; }
   <div class="field"><h3>Scene</h3>
     <div class="seg" id="worldSeg"></div>
     <div class="hint">Auto picks the landscape from the mood of the song.</div></div>
+  <div class="field"><h3>You are</h3>
+    <div class="seg" id="avSeg"><button class="btn" type="button" data-v="bird">A bird</button><button class="btn" type="button" data-v="spirit">A spirit</button><button class="btn" type="button" data-v="none">Just the view</button></div>
+    <div class="hint">Hands off and it flies itself. WASD or arrows to steer, Shift to soar, drag to look, scroll to zoom, click things to touch them.</div></div>
   <div class="field"><h3>Time of day</h3>
     <div class="seg" id="todSeg"></div>
     <div class="hint">Auto follows your clock.</div></div>
@@ -801,7 +804,7 @@ const Listen = (() => {
 // ===== App =====
 (() => {
   const $ = id => document.getElementById(id);
-  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, orb: false };
+  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, orb: false, avatar: 'bird' };
   try { Object.assign(S, JSON.parse(localStorage.getItem('vibegen.settings') || '{}')); } catch (e) {}
   const VIS = window.World || null;
   const save = () => { try { localStorage.setItem('vibegen.settings', JSON.stringify(S)); } catch (e) {} };
@@ -961,7 +964,7 @@ const Listen = (() => {
   function syncControls() {
     for (const b of $('leadSeg').children) b.classList.toggle('on', b.dataset.v === S.lead);
     for (const b of $('reSeg').children) b.classList.toggle('on', +b.dataset.v === S.reharm);
-    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); $('orbBtn').classList.toggle('on', S.orb); $('nextBtn').classList.toggle('on', S.next);
+    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); $('orbBtn').classList.toggle('on', S.orb); for (const b of $('avSeg').children) b.classList.toggle('on', b.dataset.v === S.avatar); $('nextBtn').classList.toggle('on', S.next);
     for (const b of $('worldSeg').children) b.classList.toggle('on', b.dataset.v === S.world);
     for (const b of $('todSeg').children) b.classList.toggle('on', b.dataset.v === S.tod);
     $('barsBtn').classList.toggle('on', S.bars);
@@ -973,6 +976,7 @@ const Listen = (() => {
     for (const id of ['tempo', 'swing', 'vol']) { const el = $(id); el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); }
   }
   $('orbBtn').onclick = () => { S.orb = !S.orb; save(); if (VIS) VIS.orb = S.orb; syncControls(); };
+  $('avSeg').onclick = e => { const v = e.target.dataset?.v; if (!v) return; S.avatar = v; save(); if (VIS) VIS.avatar = v; syncControls(); };
   $('todSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.tod = v; save(); VIS.setTime(v); syncControls(); paintHeader(); };
   $('barsBtn').onclick = () => { S.bars = !S.bars; save(); if (VIS && VIS.ok) VIS.letterbox = S.bars; syncControls(); };
   $('worldSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.world = v; save(); VIS.setTheme(v); syncControls(); setTimeout(paintHeader, 1300); };
@@ -1051,7 +1055,7 @@ const Listen = (() => {
   // ---------- boot ----------
   (async () => {
     try { if (VIS) VIS.init($('gl')); else toast('The 3D engine could not load. Music still plays.'); } catch (e) { console.error(e); toast('3D is not supported on this device. Music still plays.'); }
-    if (VIS && VIS.ok) { $('worldSeg').innerHTML = VIS.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = VIS.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); VIS.setTime(S.tod); VIS.letterbox = S.bars; VIS.setTheme(S.world); VIS.orb = S.orb; VIS.live(); }
+    if (VIS && VIS.ok) { VIS.avatar = S.avatar; $('worldSeg').innerHTML = VIS.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = VIS.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); VIS.setTime(S.tod); VIS.letterbox = S.bars; VIS.setTheme(S.world); VIS.orb = S.orb; VIS.live(); }
     await DB.open(); library = await DB.all(); renderCovers();
     syncControls(); paintHeader(); paintListen(); requestAnimationFrame(frame);
     paintHeader();
