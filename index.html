@@ -162,8 +162,8 @@ body.loading .loadmsg { display: block; }
     <div class="seg" id="worldSeg"></div>
     <div class="hint">Auto picks the landscape from the mood of the song.</div></div>
   <div class="field"><h3>Music toys</h3>
-    <div class="seg" id="toySeg"><button class="btn" type="button" data-v="fish">Leaping fish</button><button class="btn" type="button" data-v="stones">Note stones</button><button class="btn" type="button" data-v="lanterns">Lantern wave</button></div>
-    <div class="hint">Things in the world that play along with the notes. With an audio file the whole song is scanned first, so they land exactly on the notes; live tab or mic audio follows the beat.</div></div>
+    <div class="seg" id="toySeg"><button class="btn" type="button" data-v="flowers">Bloom waves</button><button class="btn" type="button" data-v="circle">Chime stones</button><button class="btn" type="button" data-v="fish">Leaping fish</button><button class="btn" type="button" data-v="stones">Note stones</button><button class="btn" type="button" data-v="lanterns">Lanterns</button></div>
+    <div class="hint">Things in the world that play along. Meadow flowers open in a wave of colour on every chord; standing-stone circles light the stone for each note; fish leap and lanterns glow on the notes, and villages release sky lanterns at dusk. With an audio file the whole song is scanned first, so notes land exactly; live tab or mic audio follows the beat.</div></div>
   <div class="field"><h3>You are</h3>
     <div class="seg" id="avSeg"><button class="btn" type="button" data-v="bird">A bird</button><button class="btn" type="button" data-v="spirit">A spirit</button><button class="btn" type="button" data-v="none">Just the view</button></div>
     <div class="hint">Hands off and it flies itself. WASD or arrows to steer, Shift to soar, drag to look, scroll to zoom, click things to touch them.</div></div>
@@ -844,7 +844,7 @@ const Listen = (() => {
 // ===== App =====
 (() => {
   const $ = id => document.getElementById(id);
-  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, toys: { fish: true, stones: true, lanterns: true }, avatar: 'bird' };
+  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, toys: { flowers: true, circle: true, fish: true, stones: true, lanterns: true }, avatar: 'bird' };
   try { Object.assign(S, JSON.parse(localStorage.getItem('vibegen.settings') || '{}')); } catch (e) {}
   const VIS = window.World || null;
   const save = () => { try { localStorage.setItem('vibegen.settings', JSON.stringify(S)); } catch (e) {} };
@@ -1005,7 +1005,7 @@ const Listen = (() => {
   function syncControls() {
     for (const b of $('leadSeg').children) b.classList.toggle('on', b.dataset.v === S.lead);
     for (const b of $('reSeg').children) b.classList.toggle('on', +b.dataset.v === S.reharm);
-    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); for (const b of $('toySeg').children) b.classList.toggle('on', !!(S.toys || {})[b.dataset.v]); for (const b of $('avSeg').children) b.classList.toggle('on', b.dataset.v === S.avatar); $('nextBtn').classList.toggle('on', S.next);
+    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); for (const b of $('toySeg').children) b.classList.toggle('on', (S.toys || {})[b.dataset.v] !== false); for (const b of $('avSeg').children) b.classList.toggle('on', b.dataset.v === S.avatar); $('nextBtn').classList.toggle('on', S.next);
     for (const b of $('worldSeg').children) b.classList.toggle('on', b.dataset.v === S.world);
     for (const b of $('todSeg').children) b.classList.toggle('on', b.dataset.v === S.tod);
     $('barsBtn').classList.toggle('on', S.bars);
@@ -1016,7 +1016,7 @@ const Listen = (() => {
     $('vol').value = S.vol; $('volOut').textContent = S.vol + '%';
     for (const id of ['tempo', 'swing', 'vol']) { const el = $(id); el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); }
   }
-  $('toySeg').onclick = e => { const v = e.target.dataset?.v; if (!v) return; S.toys = Object.assign({ fish: true, stones: true, lanterns: true }, S.toys); S.toys[v] = !S.toys[v]; save(); if (VIS) VIS.toys = S.toys; syncControls(); };
+  $('toySeg').onclick = e => { const v = e.target.dataset?.v; if (!v) return; S.toys = Object.assign({ flowers: true, circle: true, fish: true, stones: true, lanterns: true }, S.toys); S.toys[v] = !S.toys[v]; save(); if (VIS) VIS.toys = S.toys; syncControls(); };
   $('avSeg').onclick = e => { const v = e.target.dataset?.v; if (!v) return; S.avatar = v; save(); if (VIS) VIS.avatar = v; syncControls(); };
   $('todSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.tod = v; save(); VIS.setTime(v); syncControls(); paintHeader(); };
   $('barsBtn').onclick = () => { S.bars = !S.bars; save(); if (VIS && VIS.ok) VIS.letterbox = S.bars; syncControls(); };
