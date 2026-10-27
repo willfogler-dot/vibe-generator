@@ -165,10 +165,10 @@ const World = (() => {
     bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.22, 0.45, 1.6); composer.addPass(bloom);
     out = new OutputPass(); composer.addPass(out);
     fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa);
-    grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, time: { value: 0 }, fade: { value: 1 }, grain: { value: 0.025 }, bar: { value: 0.06 } },
+    grade = new ShaderPass({ uniforms: { tDiffuse: { value: null }, time: { value: 0 }, fade: { value: 1 }, grain: { value: 0.025 }, bar: { value: 0.06 }, pump: { value: 0 } },
       vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float time, fade, grain, bar; varying vec2 vUv;
-        void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; float l = dot(c, vec3(0.299, 0.587, 0.114));
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float time, fade, grain, bar, pump; varying vec2 vUv;
+        void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb * (1.0 + pump); float l = dot(c, vec3(0.299, 0.587, 0.114));
           c = mix(c * vec3(0.97, 1.0, 1.02), c * vec3(1.07, 1.01, 0.9), smoothstep(0.1, 0.8, l)); { float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b)); c = mix(vec3(l), c, 1.0 + 0.18 * (1.0 - (mx - mn))); }
           c = c + (c*c*(3.0 - 2.0*c) - c) * 0.12;
           vec2 q = vUv - 0.5; c *= mix(0.62, 1.0, smoothstep(0.9, 0.22, length(q*vec2(1.0, 1.25))));
@@ -201,10 +201,10 @@ const World = (() => {
   async function loadAssets() {
     const tex = (f, srgb = true, rep = true) => texL.loadAsync('assets/' + f).then(t => { if (srgb) t.colorSpace = THREE.SRGBColorSpace; if (rep) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; return t; });
     const glb = f => loader.loadAsync('assets/' + f + '.glb');
-    const [grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork, fox] = await Promise.all([
+    const [grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork, fox, parrot] = await Promise.all([
       tex('grass.jpg'), tex('dirt_color.jpg'), tex('dirt_normal.jpg', false), tex('waternormals.jpg', false),
-      Promise.all(['rock1', 'rock2', 'rock3'].map(glb)), glb('grass'), Promise.all(['flower_white', 'flower_yellow', 'flower_blue'].map(glb)), glb('Horse'), glb('Stork'), glb('Fox')]);
-    Object.assign(A, { grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork, fox });
+      Promise.all(['rock1', 'rock2', 'rock3'].map(glb)), glb('grass'), Promise.all(['flower_white', 'flower_yellow', 'flower_blue'].map(glb)), glb('Horse'), glb('Stork'), glb('Fox'), glb('Parrot')]);
+    Object.assign(A, { grassT, dirtT, dirtN, waterN, rocks, grassM, flowers, horse, stork, fox, parrot });
     let rockMap = null; rocks[0].scene.traverse(o => { if (o.isMesh && !rockMap) rockMap = o.material.map; });
     if (rockMap) { rockMap.wrapS = rockMap.wrapT = THREE.RepeatWrapping; rockMap.colorSpace = THREE.SRGBColorSpace; }
     A.rockT = rockMap || dirtT;
@@ -216,9 +216,9 @@ const World = (() => {
   function makeTerrainMat() {
     const m = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 });
     m.onBeforeCompile = sh => {
-      Object.assign(sh.uniforms, { tGrass: { value: A.grassT }, tDirt: { value: A.dirtT }, tDirtN: { value: A.dirtN }, tRock: { value: A.rockT }, gTint: TU.gTint, dTint: TU.dTint, dryAmt: TU.dryAmt, snowLine: TU.snowLine, waterLevel: TU.waterLevel, trailOn: TU.trailOn, time: U.time }, BL.U);
+      Object.assign(sh.uniforms, { tGrass: { value: A.grassT }, tDirt: { value: A.dirtT }, tDirtN: { value: A.dirtN }, tRock: { value: A.rockT }, gTint: TU.gTint, dTint: TU.dTint, dryAmt: TU.dryAmt, snowLine: TU.snowLine, waterLevel: TU.waterLevel, trailOn: TU.trailOn, time: U.time }, BL.U, { rRing: RU.rings, ringGlow: RINGG });
       sh.vertexShader = 'varying vec3 vWP; varying vec3 vWN;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n vWP = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
-      sh.fragmentShader = 'varying vec3 vWP; varying vec3 vWN; uniform sampler2D tGrass, tDirt, tDirtN, tRock; uniform vec3 gTint, dTint; uniform float dryAmt, snowLine, waterLevel, trailOn, time; uniform vec4 bW[6]; uniform vec3 bC[6]; uniform vec3 bBase; uniform float bSpeed, bGlow;\n' + NOISE + '\n' + sh.fragmentShader
+      sh.fragmentShader = 'varying vec3 vWP; varying vec3 vWN; uniform sampler2D tGrass, tDirt, tDirtN, tRock; uniform vec3 gTint, dTint; uniform float dryAmt, snowLine, waterLevel, trailOn, time, ringGlow; uniform vec4 rRing[4]; uniform vec4 bW[6]; uniform vec3 bC[6]; uniform vec3 bBase; uniform float bSpeed, bGlow;\n' + NOISE + '\n' + sh.fragmentShader
         .replace('#include <map_fragment>', `
           float mtrail = 0.0; vec3 nW = normalize(vWN); float slope = 1.0 - nW.y; vec2 q = mod(vWP.xz, 8192.0);
           float macro = gfbm(q * 0.012), macro2 = gfbm(q * 0.0025 + 7.0), fine = gn(q * 0.6);
@@ -249,6 +249,9 @@ const World = (() => {
           float mcl = clamp(mdw, 0.0, 1.0); col = mix(col, fcol, fdot * 0.9); col = mix(col, wcol * dot(col, vec3(0.3, 0.59, 0.11)) * 2.0, mcl * farB * 0.1 * winfl);
           col += wcol * wband * 0.035 * mcl;
           vec3 bloomEm = bGlow * (fcol * fdot * (0.08 + wgp * 1.4) + wcol * wband * 0.05 * mcl * winfl);
+          float rb = 0.0; for (int i = 0; i < 4; i++) { float ra = time - rRing[i].z; if (ra > 0.0 && ra < 3.0) { float dd2 = length(vWP.xz - rRing[i].xy) - ra * 20.0; rb += exp(-dd2 * dd2 / 10.0) * exp(-ra * 0.9) * rRing[i].w; } }
+          rb *= (1.0 - smoothstep(0.3, 0.6, slope)) * step(waterLevel + 0.2, vWP.y);
+          col += vec3(1.0, 0.8, 0.45) * rb * 0.5; bloomEm += vec3(1.0, 0.72, 0.38) * rb * ringGlow;
           float beach = 1.0 - smoothstep(waterLevel + 0.4, waterLevel + 1.6 + fine, vWP.y);
           col = mix(col, mix(dirtC, vec3(0.30, 0.26, 0.19), 0.65), beach); float wet = 1.0 - smoothstep(waterLevel - 0.3, waterLevel + 0.5, vWP.y); col *= 1.0 - wet * 0.5;
           float sn = smoothstep(snowLine - 25.0, snowLine + 5.0, vWP.y + (macro - 0.5) * 50.0) * (1.0 - smoothstep(0.5, 0.75, slope));
@@ -616,15 +619,17 @@ const World = (() => {
   function bloomMaterial() {
     const m = new THREE.MeshStandardMaterial({ roughness: 0.55, side: THREE.DoubleSide });
     m.onBeforeCompile = sh => {
-      Object.assign(sh.uniforms, BL.U, { time: U.time, windAmp: U.windAmp, windDir: U.windDir, gust: U.gust, fadeR: U.fadeR });
-      sh.vertexShader = WIND_DECL + `\nattribute vec4 aP, aQ, aI; attribute vec3 aCol; uniform vec4 bW[6]; uniform vec3 bC[6]; uniform vec3 bBase; uniform float bSpeed, bGlow, bRest, bKick; varying vec3 vBc, vBe;\n` + sh.vertexShader
+      Object.assign(sh.uniforms, BL.U, RU, { time: U.time, windAmp: U.windAmp, windDir: U.windDir, gust: U.gust, fadeR: U.fadeR });
+      sh.vertexShader = WIND_DECL + `\nattribute vec4 aP, aQ, aI; attribute vec3 aCol; uniform vec4 bW[6]; uniform vec3 bC[6]; uniform vec3 bBase; uniform float bSpeed, bGlow, bRest, bKick, kEnv, sEnv, hEnv, bEnv, bPar; uniform vec4 rings[4]; varying vec3 vBc, vBe;\n` + sh.vertexShader
         .replace('#include <beginnormal_vertex>', `
           vec3 ip = instanceMatrix[3].xyz; float sd = aI.x; float env = 0.0, gp = 0.0, la = 99.0; vec3 wc = bBase;
           for (int i = 0; i < 6; i++) { float age = time - bW[i].z - length(ip.xz - bW[i].xy) / bSpeed - sd * 0.22;
             if (age > 0.0) { float am = bW[i].w; env = max(env, (1.0 - exp(-age * 6.0)) * exp(-age * 0.3) * am); gp = max(gp, exp(-age * 1.7) * am); wc = bC[i]; la = age; } }
           float fsel = fract(sd * 7.13); vec3 own = fsel < 0.3 ? vec3(1.0, 0.33, 0.42) : fsel < 0.5 ? vec3(1.0, 0.75, 0.25) : fsel < 0.68 ? vec3(0.6, 0.45, 1.0) : fsel < 0.85 ? vec3(1.0, 0.92, 0.85) : vec3(1.0, 0.45, 0.25);
           float infl = la > 90.0 ? 0.0 : smoothstep(0.0, 0.5, la) * mix(1.0, 0.3, smoothstep(2.5, 10.0, la)); wc = mix(own, wc, infl);
-          float op = clamp(bRest + (1.0 - bRest) * env + 0.06 * sin(time * 0.8 + sd * 40.0), 0.0, 1.0);
+          float rp = 0.0; for (int i = 0; i < 4; i++) { float ra = time - rings[i].z; if (ra > 0.0 && ra < 3.0) { float dd2 = length(ip.xz - rings[i].xy) - ra * 20.0; rp = max(rp, exp(-dd2 * dd2 / 6.0) * exp(-ra * 0.9) * rings[i].w); } }
+          float kh = kEnv * (abs(mod(floor(sd * 97.0), 2.0) - bPar) < 0.5 ? 1.0 : 0.4);
+          float op = clamp(bRest + (1.0 - bRest) * env + 0.06 * sin(time * 0.8 + sd * 40.0) + rp * 0.45 + sEnv * 0.2, 0.0, 1.0);
           vec3 objectNormal = normal; vec3 bp = position;
           if (aP.x > 0.5 && aP.x < 1.5) { float a = aP.y, u = aP.z, v = aP.w; float o = clamp((op - aQ.w) / (1.0 - aQ.w), 0.0, 1.0); o = o * o * (3.0 - 2.0 * o);
             float phi = mix(1.42, aQ.z, o); vec3 dr = vec3(cos(a), 0.0, sin(a)), sv = vec3(-sin(a), 0.0, cos(a));
@@ -632,11 +637,12 @@ const World = (() => {
             float L = aQ.x * (1.0 + 0.15 * gp), wd = aQ.y * sin(3.1416 * pow(u, 0.65)) * (0.55 + 0.45 * o);
             bp = position + fw * (u * L + 0.012) + sv * (v * wd) + nr * ((u * u * 0.3 - v * v * 0.1) * L); objectNormal = nr; }
           else if (aP.x > 1.5) { vec3 hc = vec3(0.0, aQ.x, 0.0); bp = hc + (position - hc) * (0.8 + 0.3 * op + 0.25 * gp); }
+          bp.y *= 1.0 + 0.3 * kh + 0.3 * rp; bp.xz *= 1.0 - 0.06 * kh + 0.2 * rp;
           bp *= 1.0 - smoothstep(78.0, 98.0, length(ip.xz - cameraPosition.xz));
           vec3 pc = wc * (0.8 + 0.4 * fract(sd * 13.7));
           bool isP = aP.x > 0.5 && aP.x < 1.5;
           vBc = isP ? mix(pc * 0.45, pc * 1.1 + 0.03, smoothstep(0.0, 0.9, aP.z)) : aCol;
-          vBe = isP ? pc * bGlow * (0.1 + gp * 1.6) * (0.35 + aP.z) : aP.x > 1.5 ? aCol * bGlow * (0.6 + gp * 2.5) : vec3(0.0);`)
+          vBe = isP ? (pc * (bGlow * (0.1 + gp * 1.6) + rp * (0.25 + bGlow * 0.8)) + vec3(sEnv * 0.12)) * (0.35 + aP.z) : aP.x > 1.5 ? aCol * bGlow * (0.6 + gp * 2.5) : vec3(0.0);`)
         .replace('#include <begin_vertex>', 'vec3 transformed = bp;')
         .replace('#include <project_vertex>', `
           vec4 mvPosition = instanceMatrix * vec4(transformed, 1.0); vec4 wpos = modelMatrix * mvPosition;
@@ -1007,7 +1013,7 @@ const World = (() => {
     const D = W.d + W.speed * (t - W.t) + 26 + (prev ? 0 : 0);
     const sw = Math.sin(D * 0.035) * 4 + Math.sin(D * 0.011) * 3;
     let x = pathX(D) + latAt(D) + sw + (pitch - 0.5) * 3, z = -D; const g = groundAt(x, z), fly = lineY(x, z, 0, -1);
-    const y = Math.max(g + 2.2, mix(g + 4, fly, 0.75)) + (pitch - 0.5) * 7;
+    const y = Math.max(g + 2.2, Math.min(mix(g + 4, fly, 0.75), g + 11)) + (pitch - 0.5) * 5;
     const k = ORB.free.shift(); { const hc = hueOf(pitch); ORB.hueAttr.setXYZ(k, hc.r, hc.g, hc.b); ORB.hueAttr.needsUpdate = true; }
     const L = { t, x, y: Math.max(y, g + 1.8), z, ground: g, k, pitch, vel, done: false, born: W.t, spin: R(0, 6.28), s: R(0.85, 1.25) };
     ORB.land.push(L);
@@ -1143,9 +1149,9 @@ const World = (() => {
   const SPH = (r = 1, w = 12, h = 9) => new THREE.SphereGeometry(r, w, h);
   function charMaterial() {
     const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 });
-    m.onBeforeCompile = sh => { sh.uniforms.chGlow = FOLK.glow;
+    m.onBeforeCompile = sh => { sh.uniforms.chGlow = FOLK.glow; sh.uniforms.bEnv = RU.bEnv;
       sh.vertexShader = 'attribute float aEm; varying float vEm;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vEm = aEm;');
-      sh.fragmentShader = 'varying float vEm; uniform float chGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vColor.rgb * max(vEm, 0.0) * (0.5 + chGlow * 3.0);');
+      sh.fragmentShader = 'varying float vEm; uniform float chGlow, bEnv;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vColor.rgb * max(vEm, 0.0) * (0.5 + chGlow * 3.0) * (1.0 + bEnv * 1.6);');
     }; m.customProgramCacheKey = () => 'char'; return m;
   }
   function cmesh(geo, parent, kind, mat) { const m = new THREE.Mesh(geo, mat || FOLK.mat); m.castShadow = true; m.receiveShadow = true; m.userData.kind = kind; parent.add(m); FOLK.pick.push(m); return m; }
@@ -1475,7 +1481,7 @@ const World = (() => {
       const y = B.home.y + (night ? 1.2 + Math.sin(t * 0.7) * 0.8 : 0.6 + Math.abs(Math.sin(t * 2.1)) * 0.5) + B.up * 2.2;
       const nx = B.home.x + ox, nz = B.home.z + oz, vx = nx - B.p.x, vz = nz - B.p.z; B.p.set(nx, Math.max(y, heightAt(nx, nz) + 0.3), nz);
       te.set(0, Math.atan2(vx, vz), Math.sin(t * 4) * 0.2); tq.setFromEuler(te); tm.compose(B.p, tq, ts.setScalar(night ? 0.55 : 1.5)); FLUT.mesh.setMatrixAt(n, tm);
-      const blink = night ? (0.25 + 0.75 * Math.pow(Math.max(0, Math.sin(W.t * 2.2 + B.ph * 5)), 6)) * (1 + W.kick * 1.5) : 1; tc.copy(B.col).multiplyScalar(blink); FLUT.mesh.setColorAt(n, tc); n++; });
+      const blink = night ? (W.beatPer > 0.2 ? 0.15 + 1.6 * RU.bEnv.value * (i % 2 === BT.n % 2 ? 1 : 0.35) : 0.25 + 0.75 * Math.pow(Math.max(0, Math.sin(W.t * 2.2 + B.ph * 5)), 6)) : 1; tc.copy(B.col).multiplyScalar(blink); FLUT.mesh.setColorAt(n, tc); n++; });
     FLUT.mesh.count = n; FLUT.mesh.instanceMatrix.needsUpdate = true; if (FLUT.mesh.instanceColor) FLUT.mesh.instanceColor.needsUpdate = true;
   }
   const BALL = { list: [] };
@@ -1502,6 +1508,36 @@ const World = (() => {
       g.rotation.y += dt * 0.03; B.flame.scale.set(1, 0.3 + B.burn * 1.4, 1); B.flame.visible = B.burn > 0.05; }
   }
 
+  // ---------------- rhythm: one beat bus that the whole world dances to ----------------
+  // Audio files: beats + drum hits come from the whole-song scan (exact). Jazz covers: from the arrangement.
+  // Live audio: from the predicted beat grid and live kick detection.
+  const RINGG = { value: 0.2 };
+  const RU = { rings: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(0, 0, -99, 0)) }, kEnv: { value: 0 }, sEnv: { value: 0 }, hEnv: { value: 0 }, bEnv: { value: 0 }, bPar: { value: 0 } };
+  const BT = { n: 0, t: -9, k: -9, s: -9, h: -9, ri: 0, down: false, lastFire: -9 };
+  function onBeat(b) {
+    if (W.t - BT.lastFire < 0.18) return; BT.lastFire = W.t; BT.n++; BT.t = W.t; BT.down = !!b.d; RU.bPar.value = BT.n % 2;
+    const o = waveOrigin(), R4 = RU.rings.value[BT.ri]; BT.ri = (BT.ri + 1) % 4; R4.set(o.x, o.z, W.t, b.d ? 1.2 : 0.7);
+    gustAt(V(o.x, 0, o.z), (W.calm ? 0.3 : 0.6) * (b.d ? 1.2 : 0.8));
+    W.kick = Math.max(W.kick, b.d ? 0.9 : 0.55);
+    if (b.d && TOY.flowers && W.t - BL.lastWave > 6 && !NT.chords) { /* no chord changes for a while: the downbeat refreshes the meadow */ bloomWave(o.x, o.z, C(BLOOM_PAL[(BL.ambK = (BL.ambK + 7) % 12)]), 0.6); }
+    if (AV.kind !== 'none') { const p = AV.pos; for (let i = 0; i < (b.d ? 18 : 8); i++) { const a = i / (b.d ? 18 : 8) * 6.283; ORB.sparks.emit(p.x, p.y, p.z, Math.cos(a) * 3, R(-0.3, 0.6), Math.sin(a) * 3, 0.7, 0.07, tc.copy(BIRD_COL).multiplyScalar(b.d ? 2.4 : 1.4)); } }
+  }
+  function onHit(k, v = 0.8) {
+    if (k === 'k') { BT.k = W.t; W.kick = Math.max(W.kick, 0.6 + v * 0.4); }
+    else if (k === 's') { BT.s = W.t; if (FOLK.fire) FOLK.fire.flare = Math.max(FOLK.fire.flare, 0.5); const p = AV.pos; if (AV.kind !== 'none') for (let i = 0; i < 10; i++) ORB.sparks.emit(p.x + R(-3, 3), p.y + R(-1, 2), p.z + R(-3, 3), R(-0.5, 0.5), R(0.5, 1.5), R(-0.5, 0.5), 0.6, 0.06, tc.setRGB(2.2, 2.0, 1.8)); }
+    else { BT.h = W.t; W.hit = Math.min(1.2, W.hit + 0.5 * v); }
+  }
+  const BIRD_COL = new THREE.Color(1.0, 0.62, 0.25);
+  function updateRhythm(dt) {
+    RU.kEnv.value = Math.exp(-(W.t - BT.k) * 7); RU.sEnv.value = Math.exp(-(W.t - BT.s) * 9); RU.hEnv.value = Math.exp(-(W.t - BT.h) * 14); RU.bEnv.value = Math.exp(-(W.t - BT.t) * 6) * (BT.down ? 1 : 0.65);
+    grade.uniforms.pump.value = RU.kEnv.value * 0.05 + RU.bEnv.value * 0.035;
+    // live audio: fire beats off the predicted grid (files and covers fire their own)
+    if (mode === 'live' && !(NT.kind === 'file' && NT.beats)) {
+      if (W.beatPer > 0.25) { if (BT.next == null || BT.next < W.t - W.beatPer) BT.next = W.nextBeat; if (W.t >= BT.next) { const bi = W.barDur ? Math.round(((W.barDur - (W.downIn || 0)) % W.barDur) / W.beatPer) % 4 : BT.n % 4; onBeat({ d: bi === 0 }); BT.next = W.nextBeat > W.t + W.beatPer * 0.5 ? W.nextBeat : W.t + W.beatPer; } }
+      else BT.next = null;
+    }
+  }
+
   // ---------------- time of day + scenes ----------------
   function applyTod(k) {
     curTod = k; TD = TOD[k]; const el = TD.el * Math.PI / 180, az = TD.az * Math.PI / 180;
@@ -1514,7 +1550,7 @@ const World = (() => {
       Rr.toneMappingExposure = TD.exp; scene.environmentIntensity = TD.env; GLOW.value = k === 'night' || k === 'dusk' ? 1 : 0;
       for (const m of IMP_MATS) m.color.setScalar(k === 'night' ? 0.3 : k === 'dusk' ? 0.5 : k === 'dawn' ? 0.75 : 0.85);
       if (motes) { const mu = motes.material.uniforms; mu.col.value.set(k === 'night' || k === 'dusk' ? '#d8ff9a' : '#fff4d8'); mu.blink.value = k === 'night' || k === 'dusk' ? 1 : 0; mu.size.value = k === 'night' ? 0.22 : 0.08; mu.amt.value = k === 'night' ? 1.6 : k === 'dusk' ? 1 : 0.3; }
-      BL.U.bGlow.value = { day: 0.1, dawn: 0.3, golden: 0.3, dusk: 1.0, night: 1.5 }[k];
+      BL.U.bGlow.value = { day: 0.1, dawn: 0.3, golden: 0.3, dusk: 1.0, night: 1.5 }[k]; RINGG.value = { day: 0.45, dawn: 0.6, golden: 0.6, dusk: 1.0, night: 1.2 }[k];
       W.envT = 999; }
   }
   function updateEnv() {
@@ -1630,16 +1666,54 @@ const World = (() => {
   }
   const obsAt = (x, z) => { let v = 0; for (const vl of villages) { const d = Math.hypot(x - vl.x, z - vl.z); if (d < vl.r + 15) v = Math.max(v, sstep(vl.r + 15, vl.r - 5, d)); } return groundAt(x, z) + v * 9; };
   function lineY(x, z, fx, fz) { let g = obsAt(x, z); for (const a of [8, 20, 36]) g = Math.max(g, obsAt(x + fx * a, z + fz * a) - a * 0.05); const m = GL.mood; return g + mix(3.0, 55, m * m * (3 - 2 * m)); }
+  // ---------------- the phoenix: a glowing firebird with ribbon trails that flare on the beat ----------------
+  const PHX = { trails: [], mat: null, span: 1 };
+  function Trail(n, width, colA, colB, glow) {
+    const pos = new Float32Array(n * 2 * 3), uvs = new Float32Array(n * 2 * 2), idx = [];
+    for (let i = 0; i < n; i++) { uvs.set([i / (n - 1), 0, i / (n - 1), 1], i * 4); if (i < n - 1) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2)); g.setIndex(idx);
+    const mat = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { colA: { value: C(colA) }, colB: { value: C(colB) }, glow: { value: glow }, beat: RU.bEnv, time: U.time },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform vec3 colA, colB; uniform float glow, beat, time; varying vec2 vUv;
+        void main(){ float u = vUv.x, e = 1.0 - abs(vUv.y - 0.5) * 2.0; float a = pow(1.0 - u, 1.6) * smoothstep(0.0, 0.5, e) * smoothstep(0.0, 0.04, u);
+          float sh = 0.75 + 0.25 * sin(u * 40.0 - time * 9.0); vec3 c = mix(colA, colB, u) * a * sh * glow * (1.0 + beat * 2.2); gl_FragColor = vec4(c, 1.0); }` });
+    const mesh = new THREE.Mesh(g, mat); mesh.frustumCulled = false; scene.add(mesh);
+    const hist = []; for (let i = 0; i < n; i++) hist.push(V());
+    return { mesh, mat, hist, n, width, inited: false, g0: glow,
+      update(p, side, w) { if (!this.inited) { for (const h of hist) h.copy(p); this.inited = true; }
+        if (p.distanceTo(hist[1]) > 0.3) { for (let i = n - 1; i > 0; i--) hist[i].copy(hist[i - 1]); } hist[0].copy(p);
+        cam.getWorldDirection(tv); for (let i = 0; i < n; i++) { const a = hist[i], b = hist[Math.min(n - 1, i + 1)], d = tv2.subVectors(a, b); if (d.lengthSq() < 1e-6) d.copy(side);
+          const s = tv3.crossVectors(d, tv).normalize().multiplyScalar(w * (1 - i / n * 0.7)); pos[i * 6] = a.x + s.x; pos[i * 6 + 1] = a.y + s.y; pos[i * 6 + 2] = a.z + s.z; pos[i * 6 + 3] = a.x - s.x; pos[i * 6 + 4] = a.y - s.y; pos[i * 6 + 5] = a.z - s.z; }
+        g.attributes.position.needsUpdate = true; },
+      reset() { this.inited = false; } };
+  }
+  function phoenixMaterial(src) {
+    const m = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.0, color: C(1, 1, 1), flatShading: true, envMapIntensity: 0.4 });
+    m.onBeforeCompile = sh => { Object.assign(sh.uniforms, { bEnv: RU.bEnv, time: U.time, glowN: PHX.glowN });
+      sh.vertexShader = 'varying vec3 vLP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vLP = position;');
+      sh.fragmentShader = 'varying vec3 vLP; uniform float bEnv, time, glowN;\n' + sh.fragmentShader
+        .replace('#include <color_fragment>', `float sp = clamp(abs(vLP.x) / ${PHX.half.toFixed(3)}, 0.0, 1.0);
+          vec3 fire = mix(vec3(0.32, 0.02, 0.03), vec3(0.75, 0.2, 0.02), smoothstep(0.1, 0.6, sp)); fire = mix(fire, vec3(0.95, 0.6, 0.1), smoothstep(0.65, 1.0, sp));
+          diffuseColor.rgb = fire;`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          vec3 vN = normalize(normal); float rim = pow(1.0 - abs(dot(vN, normalize(vViewPosition))), 2.5);
+          float fl = 0.5 + 0.5 * sin(vLP.x * 0.4 + time * 6.0 + vLP.z * 0.3);
+          totalEmissiveRadiance += diffuseColor.rgb * (0.25 + glowN * 1.2 + fl * 0.2 + bEnv * 2.0) + vec3(1.0, 0.55, 0.15) * rim * (0.2 + glowN * 0.5 + bEnv * 1.2);`);
+    }; m.customProgramCacheKey = () => 'phoenix'; return m;
+  }
   function buildAvatar() {
-    const b = A.stork.scene.clone(); b.scale.setScalar(0.009); b.rotation.order = 'YXZ';
-    b.traverse(o => { if (o.isMesh) { o.castShadow = true; o.material = o.material.clone(); o.material.color.setRGB(0.92, 0.9, 0.86); o.material.roughness = 0.8; } });
-    AV.mx = new THREE.AnimationMixer(b); AV.mx.clipAction(A.stork.animations[0]).play(); AV.bird = b; scene.add(b);
+    const b = A.parrot.scene.clone(); b.rotation.order = 'YXZ'; const bb = new THREE.Box3().setFromObject(b), sz = bb.getSize(V()); PHX.half = Math.max(sz.x, sz.z) / 2; PHX.glowN = { value: 0 };
+    b.scale.setScalar(2.6 / Math.max(sz.x, sz.z)); PHX.span = 1.3;
+    b.traverse(o => { if (o.isMesh) { o.castShadow = true; o.material = phoenixMaterial(o.material); o.frustumCulled = false; } });
+    AV.mx = new THREE.AnimationMixer(b); AV.act = AV.mx.clipAction(A.parrot.animations[0]); AV.act.play(); AV.bird = b; scene.add(b);
+    PHX.trails = [Trail(16, 0.14, '#ffd27a', '#ff3a20', 0.9), Trail(16, 0.14, '#ffd27a', '#ff3a20', 0.9), Trail(9, 0.1, '#fff2c0', '#ff8040', 0.8), Trail(9, 0.1, '#fff2c0', '#ff8040', 0.8), Trail(20, 0.12, '#9af0ff', '#a050ff', 0.7)];
     const sp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 16), new THREE.MeshBasicMaterial({ color: C(5, 4.2, 2.8), fog: false }));
     sp.add(new THREE.PointLight(0xffd9a0, 18, 24, 2)); AV.spirit = sp; scene.add(sp);
     AV.walker = makeHobbit(); AV.walker.root.scale.setScalar(1.35); AV.walker.body.userData.kind = 'me';
     setAvatar(AV.kind);
   }
-  function setAvatar(k) { const was = AV.kind; AV.kind = k; if (AV.bird) { AV.bird.visible = k === 'bird'; AV.spirit.visible = k === 'spirit'; AV.walker.root.visible = k === 'walk'; } if ((was === 'walk') !== (k === 'walk')) AV.inited = false; AV.camInit = false; }
+  function setAvatar(k) { const was = AV.kind; AV.kind = k; if (AV.bird) { AV.bird.visible = k === 'bird'; for (const T of PHX.trails) { T.mesh.visible = k === 'bird'; T.reset(); } AV.spirit.visible = k === 'spirit'; AV.walker.root.visible = k === 'walk'; } if ((was === 'walk') !== (k === 'walk')) AV.inited = false; AV.camInit = false; }
   // on foot: a little adventurer that strolls the trail by itself, or goes wherever you steer
   function walkStep(dt) {
     const p = AV.pos, F = AV.walker;
@@ -1685,7 +1759,15 @@ const World = (() => {
     p.addScaledVector(AV.f, AV.speed * dt); p.y = Math.max(p.y, groundAt(p.x, p.z) + 1.4);
     W.speed = AV.speed * cp; W.d = -p.z;
     if (AV.bird && AV.kind === 'bird') { const b = AV.bird; b.position.copy(p); b.rotation.set(-AV.pitch, Math.atan2(AV.f.x, AV.f.z), -AV.roll);
-      AV.mx.timeScale = clamp(0.3 + AV.pitch * 2.2 + AV.boost * 0.9 + (AV.speed < 8 ? 0.3 : 0), 0.08, 1.7); AV.mx.update(dt); }
+      AV.mx.timeScale = clamp(0.55 + AV.pitch * 2.2 + AV.boost * 0.9 + (AV.speed < 8 ? 0.3 : 0), 0.15, 1.9); AV.mx.update(dt);
+      PHX.glowN.value = curTod === 'night' ? 1 : curTod === 'dusk' ? 0.7 : curTod === 'golden' || curTod === 'dawn' ? 0.35 : 0.15;
+      const f = AV.f, r = PHX.r || (PHX.r = V()), u = PHX.u || (PHX.u = V()); r.crossVectors(f, UP).normalize(); u.crossVectors(r, f).normalize();
+      const ph = AV.act ? AV.act.time / AV.act.getClip().duration : 0, flap = Math.sin(ph * 6.283 + 1.2), wb = 1 + RU.bEnv.value * 0.9, sw = Math.sin(W.t * 3.1) * 0.12;
+      const P_ = (a, b2, c) => tv.copy(p).addScaledVector(r, a).addScaledVector(u, b2).addScaledVector(f, c);
+      PHX.trails[0].update(P_(0.14 + sw, 0.02, -0.8), r, 0.13 * wb); PHX.trails[1].update(P_(-0.14 + sw, 0.02, -0.8), r, 0.13 * wb);
+      PHX.trails[2].update(P_(1.25, flap * 0.55, -0.15), r, 0.08 * wb); PHX.trails[3].update(P_(-1.25, flap * 0.55, -0.15), r, 0.08 * wb);
+      PHX.trails[4].update(P_(0, 0.28, 0.45), r, 0.1 * wb); const tg = curTod === 'night' || curTod === 'dusk' ? 1 : 0.55; for (const T of PHX.trails) T.mat.uniforms.glow.value = T.g0 * tg;
+      if (Math.random() < 0.5) { const q = P_(R(-0.3, 0.3), R(-0.1, 0.2), -0.6); ORB.sparks.emit(q.x, q.y, q.z, R(-0.3, 0.3), R(-0.4, 0.3), R(-0.3, 0.3), R(0.6, 1.4), R(0.04, 0.08), tc.setRGB(2.6, 1.3, 0.4)); } }
     if (AV.spirit && AV.kind === 'spirit') { AV.spirit.position.copy(p); AV.spirit.position.y += Math.sin(W.t * 1.7) * 0.15; if (Math.random() < 0.8) ORB.sparks.emit(p.x, p.y, p.z, R(-0.2, 0.2), R(-0.1, 0.2), R(-0.2, 0.2), R(0.8, 1.6), R(0.05, 0.1), tc.setRGB(2.4, 1.9, 1.2)); }
   }
   function followCam(dt) {
@@ -1777,10 +1859,10 @@ const World = (() => {
   // One note feed for everything. Audio files are scanned ahead (exact), jazz covers know their notes,
   // live audio only has a predicted beat grid. Each toy reads ahead so it can start moving before the note lands.
   const NT = { ev: [], unit: 1, now: 0, last: 0, clock: null, kind: 'none' };
-  const TOY = { fish: true, stones: true, lanterns: true, flowers: true, circle: true };
+  const TOY = { fish: true, stones: true, lanterns: true, flowers: true, circle: true, drums: true };
   const firstAt = (ev, t) => { let lo = 0, hi = ev.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ev[m].t < t) lo = m + 1; else hi = m; } return lo; };
   const toys = [];
-  function ntSet(ev, unit, clock, kind) { NT.chords = ev && ev.chords && ev.chords.length ? ev.chords : null; NT.ci = 0; NT.ev = ev || []; NT.unit = unit || 1; NT.clock = clock || null; NT.kind = ev ? kind : 'none'; NT.now = clock ? (clock() ?? 0) : NT.now; NT.last = NT.now; for (const t of toys) t.idx = firstAt(NT.ev, NT.now); clearStones(); }
+  function ntSet(ev, unit, clock, kind) { NT.beats = ev && ev.beats && ev.beats.length ? ev.beats : null; NT.bi = 0; NT.chords = ev && ev.chords && ev.chords.length ? ev.chords : null; NT.ci = 0; NT.ev = ev || []; NT.unit = unit || 1; NT.clock = clock || null; NT.kind = ev ? kind : 'none'; NT.now = clock ? (clock() ?? 0) : NT.now; NT.last = NT.now; for (const t of toys) t.idx = firstAt(NT.ev, NT.now); clearStones(); }
   function clearStones() { if (!ORB.stones) return; ORB.land.forEach(L => { ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null; }
   function ntTick() {
     if (NT.clock) { const v = NT.clock(); if (v != null) NT.now = v; }
@@ -1788,6 +1870,9 @@ const World = (() => {
     // scanned files know their chord changes: fire the bloom wave exactly on them
     if (NT.chords) { const C_ = NT.chords; if (NT.ci > 0 && C_[NT.ci - 1].t > NT.now + 0.05) NT.ci = firstAt(C_, NT.now); if (Math.abs(NT.now - NT.last) > 2) NT.ci = firstAt(C_, NT.now - 0.05);
       while (NT.ci < C_.length && C_[NT.ci].t <= NT.now) { const c = C_[NT.ci++]; if (NT.now - c.t < 0.5) onChord(c); } }
+    if (NT.beats) { const B_ = NT.beats; if (Math.abs(NT.now - NT.last) > 2 || (NT.bi > 0 && B_[NT.bi - 1].t > NT.now + 0.05)) NT.bi = firstAt(B_, NT.now - 0.02);
+      while (NT.bi < B_.length && B_[NT.bi].t <= NT.now) { const b = B_[NT.bi++]; if (NT.now - b.t < 0.25) onBeat(b); }
+      const per = NT.bi > 0 && NT.bi < B_.length ? B_[NT.bi].t - B_[NT.bi - 1].t : 0.5; W.beatPer = per; W.nextBeat = W.t + (NT.bi < B_.length ? (B_[NT.bi].t - NT.now) / NT.unit : per); }
     NT.last = NT.now;
     if (NT.hold) return;
     for (const toy of toys) { if (!TOY[toy.key]) continue; const ev = NT.ev; if (toy.idx > ev.length) toy.idx = firstAt(ev, NT.now);
@@ -1802,6 +1887,9 @@ const World = (() => {
 
   // chime circle: each note lights the standing stone for its pitch
   toys.push({ key: 'circle', look: 0.02, idx: 0, on(e, wt) { FXQ.push({ t: wt, fn: () => circleNote(e) }); } });
+
+  // drum hits (kick / snare / hat) from the scan drive the hits layer
+  toys.push({ key: 'drums', look: 0.06, idx: 0, on(e, wt) { if (NT.kind === 'file' && e.k) FXQ.push({ t: wt, fn: () => onHit(e.k, e.v) }); } });
 
   // 2) leaping fish: they leave the water just before a note and splash back in on it
   const FISH = [], WATERSPOTS = []; let fishK = 0, fishLastT = -9, spotT = 0;
@@ -1870,7 +1958,7 @@ const World = (() => {
     W.level += (M.level - W.level) * Math.min(1, dt * 0.6); W.levelSlow += (M.level - W.levelSlow) * Math.min(1, dt * 0.05);
     W.hit *= Math.exp(-dt * 5); W.kick *= Math.exp(-dt * 6); W.flare *= Math.exp(-dt * 3); W.chordFlash *= Math.exp(-dt * 1.2); W.swell *= Math.exp(-dt * 0.7);
     U.windAmp.value = (M.calm ? 0.12 : 0.18) + W.level * (M.calm ? 0.2 : 0.45); U.cloudSpeed.value = 0.01 + W.level * 0.015;
-    moodTickCam(dt); flight(dt); followCam(dt); updateToys(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateFolk(dt); updateDeco(dt); updateFlutter(dt); updateBalloons(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
+    moodTickCam(dt); flight(dt); followCam(dt); updateToys(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateFolk(dt); updateDeco(dt); updateFlutter(dt); updateBalloons(dt); updateRhythm(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
     updateTiles(cam.position.x, cam.position.z, 6); updateGrass(cam.position.x, cam.position.z, W.t < 0.3 ? null : 4); updateBloom(dt);
     pumpContent(false);
     if (frames % 3 === 0 || W.t < 0.3) { cam.updateMatrixWorld(); pmat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(pmat); cullSet(trees, NEAR_TREE, 1700); cullSet(rocks, 600, 600); cullSet(props, 3000, 3000); if (frames % 30 === 0) gatherChimneys(); }
@@ -1925,7 +2013,8 @@ const World = (() => {
     while (S.pL < S.lead.length && S.lead[S.pL].t <= jb) { const e = S.lead[S.pL++]; if (jb - e.t < 1) onNote(clamp((e.n - 58) / 28, 0, 1), e.v ?? 0.8); }
     while (S.pB < S.bass.length && S.bass[S.pB].t <= jb) { const e = S.bass[S.pB++]; if (jb - e.t < 1) onBass(0.7); }
     let big = false;
-    while (S.pD < S.drums.length && S.drums[S.pD].t <= jb) { const e = S.drums[S.pD++]; if (jb - e.t > 1) continue; if (e.n === 'ride' || e.n === 'tap') W.hit = Math.min(1.2, W.hit + (e.v || 0.6) * 0.5); else if (e.n === 'kick') W.kick = Math.min(1, W.kick + (e.v || 0.6) * 0.8); else if (e.n === 'swell') { W.swell = 1; big = true; onBig(); } }
+    while (S.pD < S.drums.length && S.drums[S.pD].t <= jb) { const e = S.drums[S.pD++]; if (jb - e.t > 1) continue; if (e.n === 'ride' || e.n === 'tap') { W.hit = Math.min(1.2, W.hit + (e.v || 0.6) * 0.5); onHit(e.n === 'tap' ? 's' : 'h', e.v || 0.6); } else if (e.n === 'kick') { W.kick = Math.min(1, W.kick + (e.v || 0.6) * 0.8); onHit('k', e.v || 0.7); } else if (e.n === 'swell') { W.swell = 1; big = true; onBig(); } }
+    if (Math.floor(jb) !== Math.floor(S.last) && jb > S.last && jb - S.last < 1) onBeat({ d: Math.floor(jb) % 4 === 0 });
     S.last = jb; W.beatPer = S.spj; W.nextBeat = W.t + (Math.ceil(jb + 1e-3) - jb) * S.spj;
     const ci = chordIdx(S.chords, Math.min(jb, S.lenJb)); if (ci !== S.ci) { onChord(S.chords[ci]); S.ci = ci; }
     const bar = Math.max(0, Math.floor(jb / 4)); const downbeat = bar !== S.bar && bar % 4 === 0; S.bar = bar;
@@ -1949,7 +2038,7 @@ const World = (() => {
     let big = false; if ((f.swell || 0) > 0.8) { big = true; onBig(); }
     LV.lvSlow += ((f.level || 0) - LV.lvSlow) * Math.min(1, dt * 0.15); if ((f.level || 0) - LV.lvSlow > 0.3) big = true;
     LV.onT -= dt; for (const o of (f.onsets || [])) { if (LV.onT > 0) break; LV.onT = 0.12; onNote(o, 0.7); }
-    if ((f.kickHit || 0) > 0) onBass(Math.min(1, f.kickHit));
+    if ((f.kickHit || 0) > 0) { onBass(Math.min(1, f.kickHit)); if (!(NT.kind === 'file' && NT.beats)) onHit('k', Math.min(1, f.kickHit)); }
     const ck = f.chord ? f.chord.root + f.chord.q : null; if (ck !== LV.chordKey) { if (ck && !(NT.kind === 'file' && NT.chords)) onChord(f.chord); LV.chordKey = ck; }
     // live audio can't see ahead: unless a scanned file is playing, toys follow the predicted beat grid
     if (NT.kind === 'midi') ntSet(null);
@@ -1961,7 +2050,7 @@ const World = (() => {
         if (NT.ev.length > 400) { const cut = NT.ev.length - 200; NT.ev = NT.ev.slice(cut); for (const t of toys) t.idx = Math.max(0, t.idx - cut); }
       }
     }
-    if (f.active && (f.tempoConf || 0) > 0.4 && f.barDur > 0.6) { const per = f.barDur / 4; W.beatPer = per; W.nextBeat = W.t + (((f.downbeatIn % per) + per) % per); } else W.beatPer = 0;
+    if (NT.kind === 'file' && NT.beats) {} else if (f.active && (f.tempoConf || 0) > 0.4 && f.barDur > 0.6) { const per = f.barDur / 4; W.barDur = f.barDur; W.downIn = f.downbeatIn; W.beatPer = per; W.nextBeat = W.t + (((f.downbeatIn % per) + per) % per); } else W.beatPer = 0;
     const downbeat = (f.tempoConf || 0) > 0.4 && f.downbeatIn != null && f.downbeatIn < dt * 1.5;
     step(dt, { calm: !!opts.calm, level: f.active ? (f.level || 0) : 0.35, downbeat, big });
   }
@@ -1983,7 +2072,7 @@ const World = (() => {
     _villages() { return villages.map(v => ({ x: v.x, z: v.z, d: v.d })); },
     _goto(x, y, z, yaw) { AV.pos.set(x, y, z); AV.yaw = yaw; AV.pitch = 0; W.d = -z; AV.camInit = false; AV.lastInput = W.t; pumpContent(true); updateTiles(x, z, null, true); updateGrass(x, z, null, true); },
     _toys() { return { kind: NT.kind, now: +NT.now.toFixed(2), fish: FISH.filter(f => f.on).length, stones: ORB.land.length, spots: WATERSPOTS.length, lamps: lampSeq.length }; },
-    _dbg() { return { FLUT, BALL, bloom, rays, grade, DECO, MILLS, BOATS, FOLK, CIRC, SKYL, SHR, circleNote, releaseLanterns, lanternSource, villages, composer, heightAt, BL, AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
+    _dbg() { return { BT, RU, FLUT, BALL, bloom, rays, grade, DECO, MILLS, BOATS, FOLK, CIRC, SKYL, SHR, circleNote, releaseLanterns, lanternSource, villages, composer, heightAt, BL, AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
     _shot(k) { const m = { low: 0.02, mid: 0.45, high: 0.98 }[k]; if (m != null) { GL.mood = m; W.levelSlow = 0.4; glideReset(); } },
     _ff(n, dt, f) { W.noRender = true; W.ffing = true; W.freeze = true; for (let i = 0; i < n; i++) frameLive(dt, Object.assign({ level: 0.5, pitch: 0.5, active: true, tempoConf: 0.9, barDur: 2, downbeatIn: 2 - ((W.t % 2) + 2) % 2 }, f || {}, { onsets: i % 7 === 0 ? [Math.random()] : [], kickHit: i % 15 === 0 ? 1 : 0 }), {}); W.noRender = false; composer.render(); W.ffing = false; } };
 })();

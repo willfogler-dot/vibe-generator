@@ -165,7 +165,7 @@ body.loading .loadmsg { display: block; }
     <div class="seg" id="toySeg"><button class="btn" type="button" data-v="flowers">Bloom waves</button><button class="btn" type="button" data-v="circle">Chime stones</button><button class="btn" type="button" data-v="fish">Leaping fish</button><button class="btn" type="button" data-v="stones">Note stones</button><button class="btn" type="button" data-v="lanterns">Lanterns</button></div>
     <div class="hint">Things in the world that play along. Meadow flowers open in a wave of colour on every chord; standing-stone circles light the stone for each note; fish leap and lanterns glow on the notes, and villages release sky lanterns at dusk. With an audio file the whole song is scanned first, so notes land exactly; live tab or mic audio follows the beat.</div></div>
   <div class="field"><h3>You are</h3>
-    <div class="seg" id="avSeg"><button class="btn" type="button" data-v="bird">A bird</button><button class="btn" type="button" data-v="spirit">A spirit</button><button class="btn" type="button" data-v="walk">On foot</button><button class="btn" type="button" data-v="none">Just the view</button></div>
+    <div class="seg" id="avSeg"><button class="btn" type="button" data-v="bird">A phoenix</button><button class="btn" type="button" data-v="spirit">A spirit</button><button class="btn" type="button" data-v="walk">On foot</button><button class="btn" type="button" data-v="none">Just the view</button></div>
     <div class="hint">Hands off and it flies (or strolls the trail) by itself. WASD or arrows to steer, Shift to soar or run, drag to look, scroll to zoom, click things to touch them: villagers, the campfire, houses, the troll, standing stones.</div></div>
   <div class="field"><h3>Time of day</h3>
     <div class="seg" id="todSeg"></div>
@@ -701,29 +701,47 @@ const Listen = (() => {
     const n = Math.floor(c0.length / ds), x = new Float32Array(n);
     for (let i = 0; i < n; i++) { let a = 0; for (let k = 0; k < ds; k++) { const j = i * ds + k; a += c0[j] + c1[j]; } x[i] = a / (2 * ds); }
     const N = 512, H = 128, F = Math.max(0, Math.floor((n - N) / H)), win = new Float32Array(N); for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
-    const re = new Float32Array(N), im = new Float32Array(N), prev = new Float32Array(N / 2), flux = new Float32Array(F), cen = new Float32Array(F);
+    const re = new Float32Array(N), im = new Float32Array(N), prev = new Float32Array(N / 2), flux = new Float32Array(F), cen = new Float32Array(F), fL = new Float32Array(F), fH = new Float32Array(F), fM = new Float32Array(F);
     const b0 = Math.max(1, Math.floor(110 / sr * N)), b1 = Math.min(N / 2, Math.floor(5200 / sr * N));
     for (let f = 0; f < F; f++) {
       if (f % 2500 === 0) await new Promise(r => setTimeout(r, 0));
       const o = f * H; for (let i = 0; i < N; i++) { re[i] = x[o + i] * win[i]; im[i] = 0; } fft(re, im, N);
-      let fl = 0, cs = 0, ms = 0; for (let b = b0; b < b1; b++) { const m = Math.log1p(30 * Math.hypot(re[b], im[b])), d = m - prev[b]; if (d > 0) fl += d; prev[b] = m; cs += b * m; ms += m; }
-      flux[f] = fl; cen[f] = ms > 0 ? cs / ms : 0;
+      let fl = 0, cs = 0, ms = 0, lo = 0, hi = 0, mi = 0; for (let b = 1; b < N / 2; b++) { const m = Math.log1p(30 * Math.hypot(re[b], im[b])), d = m - prev[b]; prev[b] = m; if (d > 0) { if (b <= 7) lo += d; else if (b >= 140) hi += d; else if (b >= 9 && b <= 90) mi += d; if (b >= b0 && b < b1) fl += d; } if (b >= b0 && b < b1) { cs += b * m; ms += m; } }
+      fL[f] = lo; fH[f] = hi; fM[f] = mi; flux[f] = fl; cen[f] = ms > 0 ? cs / ms : 0;
     }
     const fps = sr / H, w = Math.max(2, Math.round(0.22 * fps)), P = new Float64Array(F + 1); for (let f = 0; f < F; f++) P[f + 1] = P[f] + flux[f];
     const gm = P[F] / Math.max(1, F), raw = []; let lastT = -1;
     for (let f = 3; f < F - 3; f++) {
       const a = Math.max(0, f - w), b = Math.min(F, f + w + 1), mean = (P[b] - P[a]) / (b - a), thr = mean * 1.55 + gm * 0.35, v = flux[f];
       if (v <= thr || v < flux[f - 1] || v < flux[f + 1] || v < flux[f - 2] || v < flux[f + 2] || v < flux[f - 3] || v < flux[f + 3]) continue;
-      const t = (o => o)((f * H + N * 0.5) / sr + 0.012); if (t - lastT < 0.11) { if (raw.length && v / thr > raw[raw.length - 1].s) raw[raw.length - 1] = { t, s: v / thr, c: cen[f] }; continue; }
-      raw.push({ t, s: v / thr, c: cen[f] }); lastT = t;
+      const t = (o => o)((f * H + N * 0.5) / sr + 0.012); if (t - lastT < 0.11) { if (raw.length && v / thr > raw[raw.length - 1].s) raw[raw.length - 1] = { t, s: v / thr, c: cen[f], f }; continue; }
+      raw.push({ t, s: v / thr, c: cen[f], f }); lastT = t;
     }
     // thin very busy passages so the marble stays readable (keep the strongest within any 0.16 s)
     const out = []; for (const o of raw) { const l = out[out.length - 1]; if (l && o.t - l.t < 0.16) { if (o.s > l.s * 1.3) out[out.length - 1] = o; } else out.push(o); }
     const cs = out.map(o => o.c).sort((a, b) => a - b), rank = c => { let lo = 0, hi = cs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (cs[m] < c) lo = m + 1; else hi = m; } return cs.length > 1 ? lo / (cs.length - 1) : 0.5; };
     const smax = out.reduce((m, o) => Math.max(m, o.s), 1);
-    const notes = out.map(o => ({ t: o.t, p: rank(o.c), v: Math.min(1, 0.35 + 0.65 * (o.s - 1) / Math.max(0.5, smax - 1)) }));
+    // what kind of hit: kick (low thump), hat (bright tick) or snare/other (broadband)
+    const avg = a => { let s2 = 0; for (let i = 0; i < a.length; i++) s2 += a[i]; return s2 / Math.max(1, a.length) || 1; }, aL = avg(fL), aH = avg(fH), aM = avg(fM);
+    const kindAt = f => { let lo = 0, hi = 0, mi = 0; for (let g = Math.max(0, f - 1); g <= Math.min(F - 1, f + 1); g++) { lo = Math.max(lo, fL[g] / aL); hi = Math.max(hi, fH[g] / aH); mi = Math.max(mi, fM[g] / aM); } return lo > 3 && lo > 1.7 * mi ? 'k' : lo < 3.5 && hi > 3 && hi > lo * 1.5 ? 'h' : 's'; };
+    const notes = out.map(o => ({ t: o.t, p: rank(o.c), v: Math.min(1, 0.35 + 0.65 * (o.s - 1) / Math.max(0.5, smax - 1)), k: kindAt(o.f) }));
     try { notes.chords = await scanChords(x, sr, notes); } catch (e) { notes.chords = null; }
+    try { notes.beats = trackBeats(flux, fL, fps, H, N, sr); } catch (e) { notes.beats = null; }
     return notes;
+  }
+  // beat tracker (dynamic programming, Ellis 2007 style): a tempo from the onset envelope's autocorrelation,
+  // then the best chain of beats that sits on strong onsets while keeping that spacing; downbeats where the kicks are
+  function trackBeats(flux, fL, fps, H, N, sr) {
+    const F = flux.length; if (F < fps * 6) return null; let mu = 0; for (let i = 0; i < F; i++) mu += flux[i]; mu /= F;
+    const env = new Float32Array(F); let sd = 0; for (let i = 0; i < F; i++) { env[i] = Math.max(0, flux[i] - mu); sd += env[i] * env[i]; } sd = Math.sqrt(sd / F) || 1; for (let i = 0; i < F; i++) env[i] /= sd;
+    const lagMin = Math.round(fps * 60 / 190), lagMax = Math.round(fps * 60 / 62); let bestL = lagMin, bestS = -1;
+    for (let L = lagMin; L <= lagMax; L++) { let s = 0; for (let i = L; i < F; i++) s += env[i] * env[i - L]; const bpm = 60 * fps / L, w = Math.exp(-0.5 * Math.pow(Math.log2(bpm / 118) / 0.9, 2)); s *= w / (F - L); if (s > bestS) { bestS = s; bestL = L; } }
+    const L = bestL, score = new Float32Array(F), back = new Int32Array(F).fill(-1), a = 100;
+    for (let t = 0; t < F; t++) { let best = 0, bi = -1; for (let p = t - Math.round(L * 2); p <= t - Math.round(L / 2); p++) { if (p < 0) continue; const r = Math.log((t - p) / L), v = score[p] - a * r * r; if (v > best) { best = v; bi = p; } } score[t] = env[t] + best; back[t] = bi; }
+    let t = 0; for (let i = Math.max(0, F - L * 2); i < F; i++) if (score[i] > score[t]) t = i;
+    const fr = []; while (t >= 0) { fr.push(t); t = back[t]; } fr.reverse();
+    const ph = [0, 0, 0, 0]; fr.forEach((f, i) => { ph[i % 4] += fL[f] + (fL[f + 1] || 0); }); let d0 = 0; for (let k = 1; k < 4; k++) if (ph[k] > ph[d0]) d0 = k;
+    return fr.map((f, i) => ({ t: (f * H + N * 0.5) / sr + 0.012, d: (i % 4) === d0, i: ((i - d0) % 4 + 4) % 4 }));
   }
   // whole-song chord scan: chroma frames -> 24 major/minor templates -> Viterbi smoothing; changes snap to the nearest onset
   async function scanChords(x, sr, notes) {
