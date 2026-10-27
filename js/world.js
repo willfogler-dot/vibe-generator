@@ -399,7 +399,7 @@ const World = (() => {
     { const gt = trees.variants.find(v => v.giant); props.variants.push({ r: gt.r, near: Batch(gt.near.meshes.map(m => ({ geo: m.geometry, mat: m.material })), 6, { shadow: true }), kind: 'giant' }); }
     // grass + flowers
     buildExtras(); buildGrass(); buildBloom();
-    buildOrb(); buildStreaks(); buildCreatures(); buildVillageKit(); buildFish(); buildLampLights(); buildCircles(); buildSkyLanterns(); buildShrooms(); buildFolk(); DECO_STONE = stoneMaterial('#d0c6b4', true);
+    buildOrb(); buildStreaks(); buildCreatures(); buildVillageKit(); buildFish(); buildLampLights(); buildCircles(); buildSkyLanterns(); buildShrooms(); buildFolk(); buildFlutter(); buildBalloons(); DECO_STONE = stoneMaterial('#d0c6b4', true);
     { const n = 500, pos = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) pos[i] = Math.random();
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       motes = new THREE.Points(g, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { camPos: { value: V() }, box: { value: V(70, 30, 90) }, amt: { value: 0.4 }, hit: { value: 0 }, col: { value: C(1, 1, 1) }, scale: { value: 500 }, time: U.time, blink: { value: 0 }, size: { value: 0.1 } },
@@ -1439,6 +1439,69 @@ const World = (() => {
     for (const B of BOATS) { B.m.position.y = B.y0 + Math.sin(W.t * 1.1 + B.ph) * 0.06 + W.kick * 0.03; B.m.rotation.x = Math.sin(W.t * 0.9 + B.ph) * 0.04; B.m.rotation.z = Math.sin(W.t * 0.7 + B.ph * 2) * 0.05; B.m.rotation.y = B.r0 + Math.sin(W.t * 0.2 + B.ph) * 0.08; }
   }
 
+  // ---------------- butterflies by day, fireflies by night; hot-air balloons drifting overhead ----------------
+  const FLUT = { mesh: null, n: 90, list: [], mat: null };
+  function buildFlutter() {
+    const P = [], S = [];
+    for (const s of [-1, 1]) { const q = [[0, 0, -0.05], [s * 0.16, 0.02, -0.12], [s * 0.2, 0.0, 0.06], [0, 0, -0.05], [s * 0.2, 0.0, 0.06], [0, 0, 0.05], [0, 0, 0.0], [s * 0.12, -0.01, 0.1], [s * 0.05, 0, 0.14]];
+      for (const v of q) { P.push(...v); S.push(s); } }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('aSide', new THREE.Float32BufferAttribute(S, 1));
+    FLUT.mat = new THREE.ShaderMaterial({ side: THREE.DoubleSide, uniforms: { time: U.time, night: { value: 0 }, sunCol: U.sunCol, fogCol: U.fogCol },
+      vertexShader: `attribute float aSide; uniform float time, night; varying vec3 vC; varying float vW;
+        void main(){ vec3 p = position; float sd = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.71; float fl = sin(time * (night > 0.5 ? 9.0 : 15.0) + sd) * 1.05;
+          float ax = abs(p.x); p.y += ax * sin(fl) * aSide * aSide; p.x = sign(p.x) * ax * cos(fl);
+          vC = vec3(1.0); 
+          #ifdef USE_INSTANCING_COLOR
+            vC = instanceColor;
+          #endif
+          vW = ax; gl_Position = projectionMatrix * viewMatrix * modelMatrix * instanceMatrix * vec4(p, 1.0); }`,
+      fragmentShader: `uniform float night; varying vec3 vC; varying float vW; void main(){ vec3 c = night > 0.5 ? vC * (1.0 - vW * 3.0) * 3.0 : vC * (0.55 + vW * 2.5); gl_FragColor = vec4(c, 1.0); }` });
+    FLUT.mesh = new THREE.InstancedMesh(g, FLUT.mat, FLUT.n); FLUT.mesh.frustumCulled = false; FLUT.mesh.count = 0; scene.add(FLUT.mesh); FLUT.mesh.setColorAt(0, tc.setRGB(1, 1, 1));
+    for (let i = 0; i < FLUT.n; i++) FLUT.list.push({ on: false, home: V(), p: V(), ph: rnd() * 6.28, col: C(1, 1, 1), up: 0, lastWave: -9 });
+  }
+  const BFLY = ['#ffb030', '#ff6a3a', '#ffe9a0', '#6ab0ff', '#f2f2ff', '#c070ff', '#ff70a8'];
+  function updateFlutter(dt) {
+    if (!FLUT.mesh) return; const night = curTod === 'night' || curTod === 'dusk'; FLUT.mat.uniforms.night.value = night ? 1 : 0;
+    const cx = cam.position.x, cz = cam.position.z; cam.getWorldDirection(tv3); const fl = Math.hypot(tv3.x, tv3.z) || 1, ux = tv3.x / fl, uz = tv3.z / fl;
+    const want = night ? FLUT.n : curTod === 'day' || curTod === 'golden' ? 46 : 20; let n = 0; const Wv = BL.U.bW.value[5], wR = (W.t - Wv.z) * BL.U.bSpeed.value;
+    FLUT.list.forEach((B, i) => {
+      if (i >= want) { B.on = false; return; }
+      const dx = B.home.x - cx, dz = B.home.z - cz;
+      if (!B.on || dx * dx + dz * dz > 55 * 55) { const dist = R(4, 45), lat = R(-28, 28), x = cx + ux * dist - uz * lat, z = cz + uz * dist + ux * lat, h = heightAt(x, z);
+        if (h < SC.water + 0.3 || (!night && meadowAt(x, z) < 0.15 && rnd() < 0.8)) return; B.home.set(x, h, z); B.on = true; B.col.set(night ? (rnd() < 0.8 ? '#c8ff60' : '#ffd060') : pick(BFLY)); if (night) B.col.multiplyScalar(0.9); }
+      const t = W.t * (night ? 0.35 : 0.6) + B.ph, ox = Math.sin(t * 1.3) * 2.2 + Math.sin(t * 2.9) * 0.6, oz = Math.cos(t * 1.1) * 2.2 + Math.sin(t * 3.3 + 1) * 0.6;
+      const wd = Math.hypot(B.home.x - Wv.x, B.home.z - Wv.y); if (W.t - Wv.z < 8 && Math.abs(wd - wR) < 1.5 && B.lastWave !== Wv.z) { B.lastWave = Wv.z; B.up = 1; if (!night) B.col.copy(BL.U.bC.value[5]).lerp(C(1, 1, 1), 0.15); }
+      B.up *= Math.exp(-dt * 0.9);
+      const y = B.home.y + (night ? 1.2 + Math.sin(t * 0.7) * 0.8 : 0.6 + Math.abs(Math.sin(t * 2.1)) * 0.5) + B.up * 2.2;
+      const nx = B.home.x + ox, nz = B.home.z + oz, vx = nx - B.p.x, vz = nz - B.p.z; B.p.set(nx, Math.max(y, heightAt(nx, nz) + 0.3), nz);
+      te.set(0, Math.atan2(vx, vz), Math.sin(t * 4) * 0.2); tq.setFromEuler(te); tm.compose(B.p, tq, ts.setScalar(night ? 0.55 : 1.5)); FLUT.mesh.setMatrixAt(n, tm);
+      const blink = night ? (0.25 + 0.75 * Math.pow(Math.max(0, Math.sin(W.t * 2.2 + B.ph * 5)), 6)) * (1 + W.kick * 1.5) : 1; tc.copy(B.col).multiplyScalar(blink); FLUT.mesh.setColorAt(n, tc); n++; });
+    FLUT.mesh.count = n; FLUT.mesh.instanceMatrix.needsUpdate = true; if (FLUT.mesh.instanceColor) FLUT.mesh.instanceColor.needsUpdate = true;
+  }
+  const BALL = { list: [] };
+  function makeBalloon() {
+    const g = new THREE.Group(), b = HB(), cols = [pick(['#c8503c', '#e0a838', '#4a78a8', '#5a9a52', '#c86a9a', '#7a5ab0']), pick(['#f2eadb', '#e8c060'])].map(LC);
+    for (let k = 0; k < 12; k++) hAdd(b, new THREE.SphereGeometry(6, 3, 14, k / 12 * 6.283, 6.283 / 12 + 0.002, 0, 2.75), MX(0, 0, 0, 1, 1.22, 1), cols[k % 2]);
+    hAdd(b, new THREE.CylinderGeometry(2.29, 1.3, 1.3, 12, 1, true), MX(0, -7.38, 0), cols[0]);
+    for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + Math.PI / 4; hAdd(b, new THREE.CylinderGeometry(0.03, 0.03, 3.4, 4), MR(Math.cos(a) * 1.0, -8.7, Math.sin(a) * 1.0, Math.sin(a) * 0.12, 0, -Math.cos(a) * 0.12), LC('#3a2e24')); }
+    hAdd(b, new THREE.BoxGeometry(1.5, 1.1, 1.5), MX(0, -10.6, 0), LC('#8a6440')); hAdd(b, new THREE.BoxGeometry(1.6, 0.12, 1.6), MX(0, -10.05, 0), LC('#5a3e28'));
+    hAdd(b, new THREE.SphereGeometry(0.35, 8, 6), MX(0, -8.2, 0), LC('#ffb050'), 1.5);
+    const m = new THREE.Mesh(hBuild(b), FOLK.mat); m.castShadow = true; m.userData.kind = 'balloon'; g.add(m); FOLK.pick.push(m);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.4, 8).translate(0, 0.7, 0), new THREE.MeshBasicMaterial({ color: C(3, 1.5, 0.4), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    flame.position.y = -8.6; g.add(flame); g.visible = false; scene.add(g); return { g, flame, on: false, burn: 0, ph: rnd() * 6.28 };
+  }
+  function buildBalloons() { for (let i = 0; i < 3; i++) BALL.list.push(makeBalloon()); }
+  function updateBalloons(dt) {
+    const show = curTod !== 'night', cx = cam.position.x, cz = cam.position.z; cam.getWorldDirection(tv3); const fl = Math.hypot(tv3.x, tv3.z) || 1, ux = tv3.x / fl, uz = tv3.z / fl;
+    for (const B of BALL.list) { const g = B.g;
+      if (!show) { g.visible = false; B.on = false; continue; }
+      const dx = g.position.x - cx, dz = g.position.z - cz;
+      if (!B.on || dx * dx + dz * dz > 800 * 800 || (dx * ux + dz * uz) < -250) { const dist = R(180, 520), lat = R(-260, 260), x = cx + ux * dist - uz * lat, z = cz + uz * dist + ux * lat; g.position.set(x, groundAt(x, z) + R(55, 130), z); B.on = true; g.visible = true; g.scale.setScalar(R(0.9, 1.3)); }
+      B.burn = Math.max(B.burn * Math.exp(-dt * 3), W.kick > 0.6 && rnd() < 0.3 ? 1 : 0);
+      g.position.x += U.windDir.value.x * 2.2 * dt; g.position.z += U.windDir.value.y * 2.2 * dt; g.position.y += (Math.sin(W.t * 0.13 + B.ph) * 0.4 + B.burn * 0.8) * dt; g.position.y = Math.max(g.position.y, groundAt(g.position.x, g.position.z) + 40);
+      g.rotation.y += dt * 0.03; B.flame.scale.set(1, 0.3 + B.burn * 1.4, 1); B.flame.visible = B.burn > 0.05; }
+  }
+
   // ---------------- time of day + scenes ----------------
   function applyTod(k) {
     curTod = k; TD = TOD[k]; const el = TD.el * Math.PI / 180, az = TD.az * Math.PI / 180;
@@ -1671,6 +1734,7 @@ const World = (() => {
     else if (kind === 'troll') { FOLK.troll.wave = W.t; gustAt(P, 1.2); burst(P, 20, tc.setRGB(1.2, 1.1, 0.9), 1.0, 1.2, 1.6); }
     else if (kind === 'mill') { gustAt(P, 1.2); for (const M of MILLS) M.a += 1.2; burst(P, 20, tc.setRGB(1.5, 1.4, 1.1), 1.0, 1.5, 1.8); }
     else if (kind === 'boat') { for (let i = 0; i < 3; i++) FXQ.push({ t: W.t + i * 0.25, fn: () => ripple(P, 1 + i * 0.4) }); }
+    else if (kind === 'balloon') { for (const B of BALL.list) B.burn = 1.5; burst(P, 24, tc.setRGB(2.2, 1.2, 0.4), 1.5, 1.2, 1.4); }
     else if (kind === 'witch') { burst(P, 40, tc.setRGB(1.6, 0.8, 2.2), 2, 2, 2); }
     else if (kind === 'elf') { for (const E of FOLK.elves) E.lift = 1.4; burst(P, 24, tc.setRGB(1.0, 1.6, 2.2), 1.5, 0.8, 2.2); }
     else if (kind === 'rabbit') { burst(P, 10, tc.setRGB(1.4, 1.4, 1.2), 1.2, 0.6, 1.0); }
@@ -1803,7 +1867,7 @@ const World = (() => {
     W.level += (M.level - W.level) * Math.min(1, dt * 0.6); W.levelSlow += (M.level - W.levelSlow) * Math.min(1, dt * 0.05);
     W.hit *= Math.exp(-dt * 5); W.kick *= Math.exp(-dt * 6); W.flare *= Math.exp(-dt * 3); W.chordFlash *= Math.exp(-dt * 1.2); W.swell *= Math.exp(-dt * 0.7);
     U.windAmp.value = (M.calm ? 0.12 : 0.18) + W.level * (M.calm ? 0.2 : 0.45); U.cloudSpeed.value = 0.01 + W.level * 0.015;
-    moodTickCam(dt); flight(dt); followCam(dt); updateToys(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateFolk(dt); updateDeco(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
+    moodTickCam(dt); flight(dt); followCam(dt); updateToys(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateFolk(dt); updateDeco(dt); updateFlutter(dt); updateBalloons(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
     updateTiles(cam.position.x, cam.position.z, 6); updateGrass(cam.position.x, cam.position.z, W.t < 0.3 ? null : 4); updateBloom(dt);
     pumpContent(false);
     if (frames % 3 === 0 || W.t < 0.3) { cam.updateMatrixWorld(); pmat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(pmat); cullSet(trees, NEAR_TREE, 1700); cullSet(rocks, 600, 600); cullSet(props, 3000, 3000); if (frames % 30 === 0) gatherChimneys(); }
@@ -1916,7 +1980,7 @@ const World = (() => {
     _villages() { return villages.map(v => ({ x: v.x, z: v.z, d: v.d })); },
     _goto(x, y, z, yaw) { AV.pos.set(x, y, z); AV.yaw = yaw; AV.pitch = 0; W.d = -z; AV.camInit = false; AV.lastInput = W.t; pumpContent(true); updateTiles(x, z, null, true); updateGrass(x, z, null, true); },
     _toys() { return { kind: NT.kind, now: +NT.now.toFixed(2), fish: FISH.filter(f => f.on).length, stones: ORB.land.length, spots: WATERSPOTS.length, lamps: lampSeq.length }; },
-    _dbg() { return { bloom, rays, grade, DECO, MILLS, BOATS, FOLK, CIRC, SKYL, SHR, circleNote, releaseLanterns, lanternSource, villages, composer, heightAt, BL, AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
+    _dbg() { return { FLUT, BALL, bloom, rays, grade, DECO, MILLS, BOATS, FOLK, CIRC, SKYL, SHR, circleNote, releaseLanterns, lanternSource, villages, composer, heightAt, BL, AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
     _shot(k) { const m = { low: 0.02, mid: 0.45, high: 0.98 }[k]; if (m != null) { GL.mood = m; W.levelSlow = 0.4; glideReset(); } },
     _ff(n, dt, f) { W.noRender = true; W.ffing = true; W.freeze = true; for (let i = 0; i < n; i++) frameLive(dt, Object.assign({ level: 0.5, pitch: 0.5, active: true, tempoConf: 0.9, barDur: 2, downbeatIn: 2 - ((W.t % 2) + 2) % 2 }, f || {}, { onsets: i % 7 === 0 ? [Math.random()] : [], kickHit: i % 15 === 0 ? 1 : 0 }), {}); W.noRender = false; composer.render(); W.ffing = false; } };
 })();
