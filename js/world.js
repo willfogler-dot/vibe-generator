@@ -54,10 +54,10 @@ const World = (() => {
 
   // ---------------- time of day (linear HDR values) ----------------
   const TOD = {
-    dawn:   { name: 'Dawn', el: 8, az: 60, sun: '#ffc09a', si: 2.4, zen: [0.10, 0.16, 0.36], hor: [0.95, 0.66, 0.55], fog: '#b8aec4', aI: 0.95, cl: [1.6, 1.25, 1.1], cd: [0.42, 0.40, 0.55], cover: 0.45, stars: 0.08, moon: 0, exp: 1.05, fogD: 0.0008, env: 1.2, disc: 30 },
-    day:    { name: 'Midday', el: 50, az: 30, sun: '#fff3e2', si: 3.4, zen: [0.10, 0.26, 0.70], hor: [0.62, 0.78, 0.95], fog: '#b4c8dc', aI: 0.8, cl: [2.4, 2.4, 2.4], cd: [0.75, 0.80, 0.92], cover: 0.42, stars: 0, moon: 0, exp: 0.95, fogD: 0.00075, env: 1.0, disc: 25 },
-    golden: { name: 'Golden Hour', el: 13, az: -22, sun: '#ffae6a', si: 3.2, zen: [0.10, 0.18, 0.42], hor: [1.25, 0.75, 0.48], fog: '#b8a8a4', aI: 1.0, cl: [2.0, 1.35, 0.95], cd: [0.45, 0.40, 0.55], cover: 0.4, stars: 0, moon: 0, exp: 1.0, fogD: 0.0006, env: 1.2, disc: 40 },
-    dusk:   { name: 'Dusk', el: 3.5, az: -35, sun: '#ff8a5c', si: 1.7, zen: [0.03, 0.05, 0.15], hor: [0.85, 0.42, 0.32], fog: '#4c4462', aI: 1.15, cl: [1.1, 0.55, 0.45], cd: [0.12, 0.11, 0.2], cover: 0.4, stars: 0.4, moon: 0, exp: 1.25, fogD: 0.0007, env: 1.5, disc: 0 },
+    dawn:   { name: 'Dawn', el: 8, az: 60, sun: '#ffc09a', si: 2.4, zen: [0.10, 0.16, 0.36], hor: [1.0, 0.72, 0.6], fog: '#d0bcc0', aI: 0.95, cl: [1.6, 1.25, 1.1], cd: [0.42, 0.40, 0.55], cover: 0.45, stars: 0.08, moon: 0, exp: 1.05, fogD: 0.0008, env: 1.2, disc: 30 },
+    day:    { name: 'Midday', el: 42, az: 38, sun: '#fff0d4', si: 3.5, zen: [0.13, 0.29, 0.62], hor: [0.80, 0.84, 0.86], fog: '#d6d9cf', aI: 0.8, cl: [2.5, 2.42, 2.3], cd: [0.80, 0.80, 0.86], cover: 0.42, stars: 0, moon: 0, exp: 0.95, fogD: 0.00075, env: 1.0, disc: 25 },
+    golden: { name: 'Golden Hour', el: 13, az: -22, sun: '#ffa862', si: 4.3, zen: [0.10, 0.18, 0.42], hor: [1.35, 0.84, 0.52], fog: '#dcb48e', aI: 1.0, cl: [2.2, 1.5, 1.0], cd: [0.55, 0.45, 0.55], cover: 0.4, stars: 0, moon: 0, exp: 1.0, fogD: 0.0006, env: 1.2, disc: 40 },
+    dusk:   { name: 'Dusk', el: 3.5, az: -35, sun: '#ff8a5c', si: 1.7, zen: [0.03, 0.05, 0.15], hor: [0.95, 0.48, 0.34], fog: '#5c4c68', aI: 1.15, cl: [1.1, 0.55, 0.45], cd: [0.12, 0.11, 0.2], cover: 0.4, stars: 0.4, moon: 0, exp: 1.25, fogD: 0.0007, env: 1.5, disc: 0 },
     night:  { name: 'Night', el: 34, az: 18, sun: '#a8bcff', si: 0.85, zen: [0.004, 0.008, 0.025], hor: [0.03, 0.045, 0.09], fog: '#141c30', aI: 1.0, cl: [0.06, 0.07, 0.11], cd: [0.01, 0.012, 0.025], cover: 0.3, stars: 1, moon: 1, exp: 1.6, fogD: 0.0006, env: 2.2, disc: 0 }
   };
   const TOD_ORDER = ['dawn', 'day', 'golden', 'dusk', 'night'];
@@ -169,7 +169,7 @@ const World = (() => {
       vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `uniform sampler2D tDiffuse; uniform float time, fade, grain, bar; varying vec2 vUv;
         void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; float l = dot(c, vec3(0.299, 0.587, 0.114));
-          c = mix(c * vec3(0.95, 0.99, 1.05), c * vec3(1.04, 1.0, 0.94), smoothstep(0.15, 0.75, l));
+          c = mix(c * vec3(0.97, 1.0, 1.02), c * vec3(1.07, 1.01, 0.9), smoothstep(0.1, 0.8, l)); { float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b)); c = mix(vec3(l), c, 1.0 + 0.18 * (1.0 - (mx - mn))); }
           c = c + (c*c*(3.0 - 2.0*c) - c) * 0.12;
           vec2 q = vUv - 0.5; c *= mix(0.62, 1.0, smoothstep(0.9, 0.22, length(q*vec2(1.0, 1.25))));
           float n = fract(sin(dot(vUv*(time + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * grain;
@@ -223,7 +223,7 @@ const World = (() => {
           vec3 nW = normalize(vWN); float slope = 1.0 - nW.y; vec2 q = mod(vWP.xz, 8192.0);
           float macro = gfbm(q * 0.012), macro2 = gfbm(q * 0.0025 + 7.0), fine = gn(q * 0.6);
           vec3 g1 = texture2D(tGrass, q * 0.16).rgb, g2 = texture2D(tGrass, q * 0.031 + 0.37).rgb;
-          vec3 grassC = mix(g1, g2, 0.45) * vec3(0.92, 1.28, 0.62) * gTint * (0.78 + 0.5 * macro); grassC = mix(grassC, grassC * vec3(1.25, 1.15, 0.7), smoothstep(0.55, 0.85, gfbm(q * 0.05 + 3.0)) * 0.6);
+          vec3 grassC = mix(g1, g2, 0.45) * vec3(1.0, 1.32, 0.58) * gTint * (0.78 + 0.5 * macro); grassC = mix(grassC, grassC * vec3(1.25, 1.15, 0.7), smoothstep(0.55, 0.85, gfbm(q * 0.05 + 3.0)) * 0.6);
           grassC = mix(grassC, grassC * dTint * 1.25, smoothstep(0.5, 0.8, macro2) * dryAmt);
           vec3 dirtC = texture2D(tDirt, q * 0.11).rgb * vec3(1.05, 1.0, 0.95);
           vec3 bw = pow(abs(nW), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
@@ -272,7 +272,7 @@ const World = (() => {
   function updateTiles(x, z, budget, force) {
     const cix = Math.floor(x / TILE), ciz = Math.floor(z / TILE), key = cix + ',' + ciz;
     if (key !== tileKey || force) { tileKey = key; const wantT = new Map();
-      for (let oz = -NR; oz <= NR; oz++) for (let ox = -NR; ox <= NR; ox++) { const r = Math.max(Math.abs(ox), Math.abs(oz)); wantT.set((cix + ox) + ',' + (ciz + oz), { ix: cix + ox, iz: ciz + oz, r, segs: r <= 1 ? 96 : r === 2 ? 48 : r <= 4 ? 24 : 12 }); }
+      for (let oz = -NR; oz <= NR; oz++) for (let ox = -NR; ox <= NR; ox++) { const r = Math.max(Math.abs(ox), Math.abs(oz)); wantT.set((cix + ox) + ',' + (ciz + oz), { ix: cix + ox, iz: ciz + oz, r, segs: r <= 1 ? 128 : r === 2 ? 64 : r <= 4 ? 24 : 12 }); }
       for (const [k, t] of tiles) if (!wantT.has(k)) { t.mesh.visible = false; spare.push(t); tiles.delete(k); }
       tileJobs = []; for (const [k, w] of wantT) { const t = tiles.get(k); if (force || !t || t.segs !== w.segs) tileJobs.push(w); } tileJobs.sort((a, b) => a.r - b.r); }
     const t0 = performance.now(); while (tileJobs.length) { const w = tileJobs[0]; if (budget != null && w.r > 1 && performance.now() - t0 > budget) break; tileJobs.shift(); placeTile(w); }
@@ -393,10 +393,72 @@ const World = (() => {
             vA = smoothstep(box.z*0.5, 8.0, dist) * smoothstep(0.8, 4.0, dist) * (bl + hit*0.4); gl_PointSize = clamp(size * (1.0 + hit*0.5) * scale / max(dist, 1.0), 0.0, 20.0); gl_Position = projectionMatrix * mv; }`,
         fragmentShader: `uniform float amt; uniform vec3 col; varying float vA; void main(){ float r = length(gl_PointCoord - 0.5); float a = pow(smoothstep(0.5, 0.0, r), 2.0); gl_FragColor = vec4(col * a * vA * amt, 1.0); }` }));
       motes.frustumCulled = false; scene.add(motes); }
-    water = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: C('#0e2a30'), roughness: 0.05, metalness: 0.0, normalMap: A.waterN, normalScale: new THREE.Vector2(0.35, 0.35) }));
-    A.waterN.repeat.set(8000 / 14, 8000 / 14); water.receiveShadow = true; water.userData.kind = 'water'; scene.add(water); buildInteract(); buildAvatar();
+    buildHeightMap();
+    water = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000, 1, 1).rotateX(-Math.PI / 2), waterMaterial());
+    water.renderOrder = 2; water.userData.kind = 'water'; scene.add(water); buildInteract(); buildAvatar();
   }
   let water, motes;
+  // ---- water: a toroidal heightmap around the camera lets the shader know the depth everywhere ----
+  const HM = { N: 256, cell: 2.5, tex: null, data: null, wx: null, wz: null };
+  function buildHeightMap() {
+    HM.data = new Uint16Array(HM.N * HM.N); HM.tex = new THREE.DataTexture(HM.data, HM.N, HM.N, THREE.RedFormat, THREE.HalfFloatType);
+    HM.tex.wrapS = HM.tex.wrapT = THREE.RepeatWrapping; HM.tex.magFilter = HM.tex.minFilter = THREE.LinearFilter; HM.tex.needsUpdate = true;
+  }
+  const toHalf = THREE.DataUtils.toHalfFloat, imod = (a, n) => ((a % n) + n) % n;
+  function hmColumn(cx) { const N = HM.N, cs = HM.cell, i = imod(cx, N); for (let cz = HM.wz; cz < HM.wz + N; cz++) HM.data[imod(cz, N) * N + i] = toHalf(heightAt(cx * cs, cz * cs)); }
+  function hmRow(cz) { const N = HM.N, cs = HM.cell, j = imod(cz, N) * N; for (let cx = HM.wx; cx < HM.wx + N; cx++) HM.data[j + imod(cx, N)] = toHalf(heightAt(cx * cs, cz * cs)); }
+  function updateHeightMap(force) {
+    const N = HM.N, cs = HM.cell, tx = Math.floor(cam.position.x / cs) - N / 2, tz = Math.floor(cam.position.z / cs) - N / 2; let dirty = false;
+    if (force || HM.wx == null || Math.abs(tx - HM.wx) >= N || Math.abs(tz - HM.wz) >= N) { HM.wx = tx; HM.wz = tz; for (let cx = tx; cx < tx + N; cx++) hmColumn(cx); HM.tex.needsUpdate = true; return; }
+    const t0 = performance.now();
+    while (performance.now() - t0 < 3) {
+      if (HM.wx < tx) { HM.wx++; hmColumn(HM.wx + N - 1); } else if (HM.wx > tx) { HM.wx--; hmColumn(HM.wx); }
+      else if (HM.wz < tz) { HM.wz++; hmRow(HM.wz + N - 1); } else if (HM.wz > tz) { HM.wz--; hmRow(HM.wz); } else break;
+      dirty = true;
+    }
+    if (dirty) HM.tex.needsUpdate = true;
+  }
+  const WU = { hmTex: { value: null }, nTex: { value: null }, hmCell: { value: 2.5 }, hmN: { value: 256 }, hmMin: { value: new THREE.Vector2() }, hmMax: { value: new THREE.Vector2() },
+    wLevel: { value: 0 }, fogColor: { value: C(0, 0, 0) }, fogDensity: { value: 0.001 }, shallowC: { value: C(0, 0, 0) }, deepC: { value: C(0, 0, 0) }, ambC: { value: C(0, 0, 0) }, kick: { value: 0 }, nightGlow: { value: 0 } };
+  function waterMaterial() {
+    Object.assign(WU, { time: U.time, sunDir: U.sunDir, sunCol: U.sunCol, skyZen: U.skyZen, skyHor: U.skyHor, cloudLit: U.cloudLit, cloudDark: U.cloudDark, cover: U.cover });
+    WU.hmTex.value = HM.tex; WU.nTex.value = A.waterN;
+    return new THREE.ShaderMaterial({ uniforms: WU, transparent: true, depthWrite: false,
+      vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: NOISE + `
+        uniform sampler2D hmTex, nTex; uniform float hmCell, hmN, wLevel, time, fogDensity, cover, kick, nightGlow; uniform vec2 hmMin, hmMax;
+        uniform vec3 fogColor, sunDir, sunCol, skyZen, skyHor, cloudLit, cloudDark, shallowC, deepC, ambC; varying vec3 vW;
+        float terrainH(vec2 p){ if (p.x < hmMin.x || p.y < hmMin.y || p.x > hmMax.x || p.y > hmMax.y) return wLevel - 8.0; return texture2D(hmTex, (p / hmCell + 0.5) / hmN).r; }
+        void main(){
+          vec3 toC = cameraPosition - vW; float dist = length(toC); vec3 v = toC / dist; vec2 uv = mod(vW.xz, 4096.0);
+          float depth = max(wLevel - terrainH(vW.xz), 0.0);
+          vec3 n1 = texture2D(nTex, uv * 0.045 + vec2(time * 0.010, time * 0.007)).rgb * 2.0 - 1.0;
+          vec3 n2 = texture2D(nTex, uv * 0.13 - vec2(time * 0.016, -time * 0.012)).rgb * 2.0 - 1.0;
+          vec3 n3 = texture2D(nTex, uv * 0.012 + vec2(-time * 0.003, time * 0.005)).rgb * 2.0 - 1.0;
+          float att = 1.0 / (1.0 + dist * 0.015);
+          vec2 g = (n1.xy * 0.45 + n2.xy * 0.3 * att + n3.xy * 0.55) * (0.32 + kick * 0.12) * mix(0.35, 1.0, att) * smoothstep(0.0, 0.8, depth + 0.1);
+          vec3 n = normalize(vec3(g.x, 1.0, g.y));
+          vec3 r = reflect(-v, n); r.y = abs(r.y) + 0.015;
+          vec3 sky = mix(skyHor, skyZen, pow(clamp(r.y, 0.0, 1.0), 0.5));
+          float cl = smoothstep(1.0 - cover, 1.32 - cover, gfbm(r.xz / (r.y + 0.1) * 0.9 + time * 0.003)) * smoothstep(0.0, 0.2, r.y);
+          sky = mix(sky, mix(cloudDark, cloudLit, 0.65), cl * 0.75);
+          sky = mix(sky, fogColor * 0.55 + ambC * 0.35, smoothstep(0.22, 0.0, r.y) * 0.7);
+          float fr = 0.025 + 0.975 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
+          float dk = smoothstep(0.15, 4.0, depth);
+          vec3 body = mix(shallowC, deepC, dk) * (ambC + sunCol * max(sunDir.y, 0.05) * 0.35);
+          float caus = pow(gn(uv * 1.7 + n.xz * 3.0 + time * 0.4) * gn(uv * 2.3 - time * 0.3 + 4.0), 2.0) * (1.0 - dk) * 1.4;
+          body += sunCol * caus * 0.08 * max(sunDir.y, 0.0);
+          vec3 c = mix(body, sky, fr);
+          float sd = max(dot(r, sunDir), 0.0); c += sunCol * (pow(sd, 900.0) * 7.0 + pow(sd, 90.0) * 0.35);
+          float fn = gn(uv * 0.9 + time * 0.25) * 0.6 + gn(uv * 3.1 - time * 0.3) * 0.4;
+          float foam = smoothstep(0.32, 0.0, depth + (fn - 0.5) * 0.28) * smoothstep(0.0, 0.04, depth);
+          c = mix(c, vec3(0.92, 0.94, 0.93) * (ambC * 1.3 + sunCol * 0.22), foam * 0.75);
+          c += vec3(0.25, 0.7, 0.8) * caus * nightGlow * 0.15;
+          float alpha = mix(0.2, 0.95, smoothstep(0.0, 1.6, depth)); alpha = max(alpha, fr * 0.92); alpha = max(alpha, foam * 0.85);
+          float fogF = 1.0 - exp(-fogDensity * fogDensity * dist * dist);
+          gl_FragColor = vec4(mix(c, fogColor, fogF), alpha);
+        }` });
+  }
   function makeRuin(k) {
     const parts = [], box = (w, h, d, x, y, z, rx = 0, ry = 0, rz = 0) => parts.push(new THREE.BoxGeometry(w, h, d, 2, Math.max(1, Math.round(h)), 2).applyMatrix4(new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(1, 1, 1))));
     const cyl = (r1, r2, h, x, y, z, rz = 0, ry = 0) => parts.push(new THREE.CylinderGeometry(r1, r2, h, 14, Math.max(1, Math.round(h / 2))).applyMatrix4(new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, rz)), V(1, 1, 1))));
@@ -759,8 +821,8 @@ const World = (() => {
     U.stars.value = TD.stars; U.moon.value = TD.moon; U.sunDisc.value = TD.disc; U.cover.value = TD.cover; U.aurora.value = k === 'night' ? 1 : 0;
     U.skyZen.value.setRGB(...TD.zen); U.skyHor.value.setRGB(...TD.hor); U.cloudLit.value.setRGB(...TD.cl); U.cloudDark.value.setRGB(...TD.cd);
     U.sunCol.value.set(TD.sun).multiplyScalar(TD.si); U.fogCol.value.set(TD.fog);
-    if (scene) { scene.fog.color.set(TD.fog); scene.fog.density = TD.fogD; sun.color.set(TD.sun); sun.intensity = TD.si * (k === 'night' ? 1.2 : 1); const fill = { dawn: ['#b4b4d8', '#4a4040'], day: ['#cfe0f8', '#5a5440'], golden: ['#a8b8e8', '#5a4834'], dusk: ['#8a88cc', '#3a3044'], night: ['#6c84d0', '#1a1e2c'] }[k];
-      hemi.intensity = TD.aI; hemi.color.set(fill[0]); hemi.groundColor.set(fill[1]); WIN.value = WIN.base = { day: 0, dawn: 0.5, golden: 0.9, dusk: 3.2, night: 4.5 }[k]; if (SMOKE.mat) SMOKE.mat.uniforms.col.value.set(k === 'night' ? '#3a4058' : k === 'dusk' ? '#7a7088' : '#b8b4b0');
+    if (scene) { scene.fog.color.set(TD.fog); scene.fog.density = TD.fogD; sun.color.set(TD.sun); sun.intensity = TD.si * (k === 'night' ? 1.2 : 1); const fill = { dawn: ['#b4b4d8', '#4a4040'], day: ['#d8e2ee', '#625a40'], golden: ['#c8b4cc', '#6a5034'], dusk: ['#8a88cc', '#3a3044'], night: ['#6c84d0', '#1a1e2c'] }[k];
+      hemi.intensity = TD.aI; hemi.color.set(fill[0]); hemi.groundColor.set(fill[1]); WU.shallowC.value.set(k === 'night' ? '#1c4a58' : k === 'dusk' ? '#3a6a72' : '#48b0a0'); WU.deepC.value.set(k === 'night' ? '#04121c' : '#0b3442'); WU.nightGlow.value = k === 'night' || k === 'dusk' ? 1 : 0; WIN.value = WIN.base = { day: 0, dawn: 0.5, golden: 0.9, dusk: 3.2, night: 4.5 }[k]; if (SMOKE.mat) SMOKE.mat.uniforms.col.value.set(k === 'night' ? '#3a4058' : k === 'dusk' ? '#7a7088' : '#b8b4b0');
       Rr.toneMappingExposure = TD.exp; scene.environmentIntensity = TD.env; GLOW.value = k === 'night' || k === 'dusk' ? 1 : 0;
       for (const m of IMP_MATS) m.color.setScalar(k === 'night' ? 0.3 : k === 'dusk' ? 0.5 : k === 'dawn' ? 0.75 : 0.85);
       if (motes) { const mu = motes.material.uniforms; mu.col.value.set(k === 'night' || k === 'dusk' ? '#d8ff9a' : '#fff4d8'); mu.blink.value = k === 'night' || k === 'dusk' ? 1 : 0; mu.size.value = k === 'night' ? 0.22 : 0.08; mu.amt.value = k === 'night' ? 1.6 : k === 'dusk' ? 1 : 0.3; }
@@ -772,10 +834,10 @@ const World = (() => {
   }
   function applyScene(k) {
     cur = k; SC = SCN[k];
-    TU.gTint.value.set(SC.tint); GRASS_COL.set(SC.card || '#7c9a48'); TU.dTint.value.set(SC.dryTint); TU.dryAmt.value = SC.dry; TU.snowLine.value = SC.snow; TU.waterLevel.value = SC.water;
+    TU.gTint.value.set(SC.tint); GRASS_COL.set(SC.card || '#8fae48'); TU.dTint.value.set(SC.dryTint); TU.dryAmt.value = SC.dry; TU.snowLine.value = SC.snow; TU.waterLevel.value = SC.water;
     water.position.y = SC.water; resetContent();
     AV.inited = false; AV.camInit = false; moodTickCam(0.016); flight(0.016); followCam(0.016);
-    updateTiles(cam.position.x, cam.position.z, null, true); updateGrass(cam.position.x, cam.position.z, null, true);
+    updateTiles(cam.position.x, cam.position.z, null, true); updateGrass(cam.position.x, cam.position.z, null, true); updateHeightMap(true);
     ORB.land.forEach(L => { ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null;
     HERD.on = false; for (const H of HERD.list) H.obj.visible = false; for (const F of FOXES) { F.on = false; F.obj.visible = false; }
   }
@@ -1083,8 +1145,10 @@ const World = (() => {
     sun.target.position.set(sx, fy, sz); sun.position.copy(U.sunDir.value).multiplyScalar(400).add(sun.target.position);
     if (TD.el < 2 && curTod !== 'night') sun.intensity = TD.si * 0.6;
     sky.position.copy(cam.position);
-    const ws = 14; water.position.set(Math.round(cam.position.x / ws) * ws, SC.water, Math.round(cam.position.z / ws) * ws); water.visible = SC.water > -100;
-    A.waterN.offset.set((W.t * 0.004) % 1, (W.t * 0.007) % 1);
+    water.position.set(cam.position.x, SC.water, cam.position.z); water.visible = SC.water > -100;
+    updateHeightMap(false); WU.hmMin.value.set(HM.wx * HM.cell, HM.wz * HM.cell); WU.hmMax.value.set((HM.wx + HM.N - 1) * HM.cell, (HM.wz + HM.N - 1) * HM.cell);
+    WU.wLevel.value = SC.water; WU.fogColor.value.copy(scene.fog.color); WU.fogDensity.value = scene.fog.density; WU.kick.value = W.kick;
+    WU.ambC.value.copy(hemi.color).multiplyScalar(hemi.intensity * 0.55);
     W.envT += dt; if (W.envT > 20) { W.envT = 0; updateEnv(); }
     const mu = motes.material.uniforms; mu.camPos.value.copy(cam.position); mu.hit.value = W.hit; const scl = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360)); mu.scale.value = scl; ORB.sparks.mat.uniforms.scale.value = scl;
     tv.copy(U.sunDir.value).multiplyScalar(1000).add(cam.position).project(cam); cam.getWorldDirection(tv2); const facing = tv2.dot(U.sunDir.value);
