@@ -2,6 +2,8 @@
 
 TV for music: a realistic, cinematic valley you can leave running while music plays. You are a bird gliding through it. Hands off, it flies itself like a film; take the controls whenever you want. The world responds to the song: wind moves through the grass and trees with the bass, and the flight's speed and altitude follow the song's energy over time.
 
+**Music toys:** leaping fish that splash down on the notes, a glowing orb that hops across floating stones landing on each note (colored by pitch), and at dusk/night each note lights the next lantern along the trail. With an audio file the whole song is scanned for notes before it plays, so they land exactly on time; jazz covers know their notes; live tab/mic audio follows the predicted beat. Toggle each in Settings.
+
 **Controls:** WASD or arrow keys steer and climb, Shift to soar, drag to look around, scroll to zoom. Let go for a few seconds and the autopilot eases back. Click the world to touch it: water ripples, trees shake and release birds, grass waves out from where you click, ruins light up with the bass. With a beat locked, touches land on the next beat. Touch screens: drag to steer, tap to touch.
 
 ## Try it

@@ -383,7 +383,7 @@ const World = (() => {
     { const gt = trees.variants.find(v => v.giant); props.variants.push({ r: gt.r, near: Batch(gt.near.meshes.map(m => ({ geo: m.geometry, mat: m.material })), 6, { shadow: true }), kind: 'giant' }); }
     // grass + flowers
     buildGrass();
-    buildOrb(); buildStreaks(); buildCreatures(); buildVillageKit();
+    buildOrb(); buildStreaks(); buildCreatures(); buildVillageKit(); buildFish(); buildLampLights();
     { const n = 500, pos = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) pos[i] = Math.random();
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       motes = new THREE.Points(g, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { camPos: { value: V() }, box: { value: V(70, 30, 90) }, amt: { value: 0.4 }, hit: { value: 0 }, col: { value: C(1, 1, 1) }, scale: { value: 500 }, time: U.time, blink: { value: 0 }, size: { value: 0.1 } },
@@ -584,15 +584,16 @@ const World = (() => {
   // ---------------- the note orb: it lands on a stone on every note ----------------
   const ORB = { mesh: null, light: null, stones: null, glowAttr: null, land: [], free: [], pos: V(), vel: V(), last: null, ripples: [], sparks: null, cap: 72 };
   function buildOrb() {
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.2, 24, 16), new THREE.MeshBasicMaterial({ color: C(1, 1, 1), fog: false }));
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.34, 24, 16), new THREE.MeshBasicMaterial({ color: C(1, 1, 1), fog: false }));
     core.material.color.setRGB(4, 3.4, 2.4); ORB.mesh = core; scene.add(core);
     ORB.light = new THREE.PointLight(0xffd9a0, 40, 30, 2); core.add(ORB.light);
-    const rk = kitFromScene(A.rocks[1].scene, 0.12)[0], g = rk.geo; g.computeBoundingBox(); const bb = g.boundingBox; g.translate(-(bb.min.x + bb.max.x) / 2, -bb.max.y, -(bb.min.z + bb.max.z) / 2); g.scale(1, 0.55, 1);
+    const rk = kitFromScene(A.rocks[1].scene, 0.19)[0], g = rk.geo; g.computeBoundingBox(); const bb = g.boundingBox; g.translate(-(bb.min.x + bb.max.x) / 2, -bb.max.y, -(bb.min.z + bb.max.z) / 2); g.scale(1, 0.55, 1);
     const glow = new THREE.InstancedBufferAttribute(new Float32Array(ORB.cap), 1); g.setAttribute('aGlow', glow); ORB.glowAttr = glow;
+    const hue = new THREE.InstancedBufferAttribute(new Float32Array(ORB.cap * 3).fill(1), 3); g.setAttribute('aHue', hue); ORB.hueAttr = hue;
     const m = new THREE.MeshStandardMaterial({ map: A.rockT, roughness: 0.8, color: C('#b8b0a8') });
     m.onBeforeCompile = sh => { sh.uniforms.glowCol = { value: C(1.0, 0.75, 0.4) };
-      sh.vertexShader = 'attribute float aGlow; varying float vGlow;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGlow = aGlow;');
-      sh.fragmentShader = 'varying float vGlow; uniform vec3 glowCol;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += glowCol * vGlow * (0.4 + 0.6 * smoothstep(-0.3, 0.0, vViewPosition.y * 0.0)) * 6.0;'); };
+      sh.vertexShader = 'attribute float aGlow; attribute vec3 aHue; varying float vGlow; varying vec3 vHue;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vGlow = aGlow; vHue = aHue;');
+      sh.fragmentShader = 'varying float vGlow; varying vec3 vHue; uniform vec3 glowCol;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vHue * vGlow * (0.4 + 0.6 * smoothstep(-0.3, 0.0, vViewPosition.y * 0.0)) * 6.0;'); };
     m.customProgramCacheKey = () => 'orbstone';
     ORB.stones = new THREE.InstancedMesh(g, m, ORB.cap); ORB.stones.frustumCulled = false; ORB.stones.castShadow = true; ORB.stones.receiveShadow = true; scene.add(ORB.stones);
     for (let i = 0; i < ORB.cap; i++) { ORB.stones.setMatrixAt(i, ZERO); ORB.free.push(i); }
@@ -620,14 +621,16 @@ const World = (() => {
     if (!ORB.free.length || !W.orbOn) return;
     const prev = ORB.land.length ? ORB.land[ORB.land.length - 1] : null; if (prev && t - prev.t < 0.11) return;
     const D = W.d + W.speed * (t - W.t) + 26 + (prev ? 0 : 0);
-    const sw = Math.sin(D * 0.035) * 5 + Math.sin(D * 0.011) * 4;
-    let x = pathX(D) + sw + (pitch - 0.5) * 3, z = -D; const g = groundAt(x, z), y = Math.max(g + 2.2, (prev ? prev.ground : g) * 0.6 + g * 0.4 + 3.5) + (pitch - 0.5) * 7 + 1.5;
-    const k = ORB.free.shift(); const L = { t, x, y: Math.max(y, g + 1.8), z, ground: g, k, pitch, vel, done: false, born: W.t, spin: R(0, 6.28), s: R(0.85, 1.25) };
+    const sw = Math.sin(D * 0.035) * 4 + Math.sin(D * 0.011) * 3;
+    let x = pathX(D) + latAt(D) + sw + (pitch - 0.5) * 3, z = -D; const g = groundAt(x, z), fly = lineY(x, z, 0, -1);
+    const y = Math.max(g + 2.2, mix(g + 4, fly, 0.75)) + (pitch - 0.5) * 7;
+    const k = ORB.free.shift(); { const hc = new THREE.Color().setHSL(0.6 - pitch * 0.58, 0.9, 0.55); ORB.hueAttr.setXYZ(k, hc.r, hc.g, hc.b); ORB.hueAttr.needsUpdate = true; }
+    const L = { t, x, y: Math.max(y, g + 1.8), z, ground: g, k, pitch, vel, done: false, born: W.t, spin: R(0, 6.28), s: R(0.85, 1.25) };
     ORB.land.push(L);
   }
   function updateOrb(dt) {
     const now = W.t, glow = ORB.glowAttr.array;
-    ORB.mesh.visible = W.orbOn;
+    ORB.mesh.visible = W.orbOn && TOY.stones && (ORB.land.length > 0 || W.t - (ORB.lastLand || -99) < 4);
     // stones: grow in, flash on landing, sink away later
     for (let i = ORB.land.length - 1; i >= 0; i--) {
       const L = ORB.land[i], age = now - L.born, after = now - L.t;
@@ -641,7 +644,7 @@ const World = (() => {
     // landed stones become the start of the next arc; long gaps hover, then hop
     for (const L of ORB.land) { if (L.t > now) break; if (!L.done) { L.done = true; onLand(L); ORB.from = { p: V(L.x, L.y, L.z), t: L.t }; } }
     const B = ORB.land.find(L => L.t > now);
-    const hoverP = tv2; onPath(W.d + 26, Math.sin((W.d + 26) * 0.035) * 5, hoverP); hoverP.y = groundAt(hoverP.x, hoverP.z) + 5 + Math.sin(now * 1.7) * 0.4;
+    const hoverP = tv2; onPath(W.d + 26, latAt(W.d + 26), hoverP); hoverP.y = mix(groundAt(hoverP.x, hoverP.z) + 4, lineY(hoverP.x, hoverP.z, 0, -1), 0.75) + Math.sin(now * 1.7) * 0.4;
     const hovering = !B || !ORB.from || (B.t - now > 1.1 && B.t - ORB.from.t > 2.2);
     if (hovering) { ORB.pos.lerp(B ? tv3.set(B.x, B.y + 2.5, B.z).lerp(hoverP, 0.5) : hoverP, Math.min(1, dt * 1.6)); ORB.from = { p: ORB.pos.clone(), t: now }; }
     else { const F = ORB.from, span = Math.max(0.08, B.t - F.t), u = clamp((now - F.t) / span, 0, 1), arcH = clamp(9.8 * 1.8 * span * span / 8, 0.25, 7);
@@ -655,9 +658,11 @@ const World = (() => {
   }
   let ripK = 0;
   function onLand(L) {
+    ORB.lastLand = W.t;
     ORB.squash = 1; ORB.flash = 1;
     const r = ORB.ripples[ripK]; ripK = (ripK + 1) % ORB.ripples.length; r.age = 0; r.m.position.set(L.x, L.y - 0.3, L.z);
-    const n = W.calm ? 6 : 14; for (let i = 0; i < n; i++) { const a = rnd() * 6.283, sp = R(0.8, 2.6); ORB.sparks.emit(L.x, L.y - 0.2, L.z, Math.cos(a) * sp, R(0.6, 2.2), Math.sin(a) * sp, R(0.6, 1.3), R(0.05, 0.1), tc.setRGB(2.6, 1.8, 0.9)); }
+    const hc = new THREE.Color().setHSL(0.6 - L.pitch * 0.58, 0.9, 0.6); r.m.material.color.copy(hc).multiplyScalar(2.2); ORB.mesh.material.color.copy(hc).lerp(C(1, 1, 1), 0.5).multiplyScalar(4); ORB.light.color.copy(hc).lerp(C(1, 0.9, 0.7), 0.4);
+    const n = W.calm ? 6 : 14; for (let i = 0; i < n; i++) { const a = rnd() * 6.283, sp = R(0.8, 2.6); ORB.sparks.emit(L.x, L.y - 0.2, L.z, Math.cos(a) * sp, R(0.6, 2.2), Math.sin(a) * sp, R(0.6, 1.3), R(0.05, 0.1), tc.copy(hc).multiplyScalar(2.4)); }
   }
 
   // ---------------- wind streaks (melody) ----------------
@@ -755,7 +760,7 @@ const World = (() => {
     U.skyZen.value.setRGB(...TD.zen); U.skyHor.value.setRGB(...TD.hor); U.cloudLit.value.setRGB(...TD.cl); U.cloudDark.value.setRGB(...TD.cd);
     U.sunCol.value.set(TD.sun).multiplyScalar(TD.si); U.fogCol.value.set(TD.fog);
     if (scene) { scene.fog.color.set(TD.fog); scene.fog.density = TD.fogD; sun.color.set(TD.sun); sun.intensity = TD.si * (k === 'night' ? 1.2 : 1); const fill = { dawn: ['#b4b4d8', '#4a4040'], day: ['#cfe0f8', '#5a5440'], golden: ['#a8b8e8', '#5a4834'], dusk: ['#8a88cc', '#3a3044'], night: ['#6c84d0', '#1a1e2c'] }[k];
-      hemi.intensity = TD.aI; hemi.color.set(fill[0]); hemi.groundColor.set(fill[1]); WIN.value = { day: 0, dawn: 0.5, golden: 0.9, dusk: 3.2, night: 4.5 }[k]; if (SMOKE.mat) SMOKE.mat.uniforms.col.value.set(k === 'night' ? '#3a4058' : k === 'dusk' ? '#7a7088' : '#b8b4b0');
+      hemi.intensity = TD.aI; hemi.color.set(fill[0]); hemi.groundColor.set(fill[1]); WIN.value = WIN.base = { day: 0, dawn: 0.5, golden: 0.9, dusk: 3.2, night: 4.5 }[k]; if (SMOKE.mat) SMOKE.mat.uniforms.col.value.set(k === 'night' ? '#3a4058' : k === 'dusk' ? '#7a7088' : '#b8b4b0');
       Rr.toneMappingExposure = TD.exp; scene.environmentIntensity = TD.env; GLOW.value = k === 'night' || k === 'dusk' ? 1 : 0;
       for (const m of IMP_MATS) m.color.setScalar(k === 'night' ? 0.3 : k === 'dusk' ? 0.5 : k === 'dawn' ? 0.75 : 0.85);
       if (motes) { const mu = motes.material.uniforms; mu.col.value.set(k === 'night' || k === 'dusk' ? '#d8ff9a' : '#fff4d8'); mu.blink.value = k === 'night' || k === 'dusk' ? 1 : 0; mu.size.value = k === 'night' ? 0.22 : 0.08; mu.amt.value = k === 'night' ? 1.6 : k === 'dusk' ? 1 : 0.3; }
@@ -979,6 +984,76 @@ const World = (() => {
     if (CAM.t > CAM.len && (M.downbeat || CAM.t > CAM.len + 5)) directorStart(false);
   }
 
+  // ---------------- music toys: things in the world that play along with the notes ----------------
+  // One note feed for everything. Audio files are scanned ahead (exact), jazz covers know their notes,
+  // live audio only has a predicted beat grid. Each toy reads ahead so it can start moving before the note lands.
+  const NT = { ev: [], unit: 1, now: 0, last: 0, clock: null, kind: 'none' };
+  const TOY = { fish: true, stones: true, lanterns: true };
+  const firstAt = (ev, t) => { let lo = 0, hi = ev.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ev[m].t < t) lo = m + 1; else hi = m; } return lo; };
+  const toys = [];
+  function ntSet(ev, unit, clock, kind) { NT.ev = ev || []; NT.unit = unit || 1; NT.clock = clock || null; NT.kind = ev ? kind : 'none'; NT.now = clock ? (clock() ?? 0) : NT.now; NT.last = NT.now; for (const t of toys) t.idx = firstAt(NT.ev, NT.now); clearStones(); }
+  function clearStones() { if (!ORB.stones) return; ORB.land.forEach(L => { ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null; }
+  function ntTick() {
+    if (NT.clock) { const v = NT.clock(); if (v != null) NT.now = v; }
+    if (NT.now < NT.last - 0.3 / NT.unit || NT.now > NT.last + 4 / NT.unit) { for (const t of toys) t.idx = firstAt(NT.ev, NT.now); clearStones(); }
+    NT.last = NT.now;
+    if (NT.hold) return;
+    for (const toy of toys) { if (!TOY[toy.key]) continue; const ev = NT.ev; if (toy.idx > ev.length) toy.idx = firstAt(ev, NT.now);
+      while (toy.idx < ev.length && (ev[toy.idx].t - NT.now) * NT.unit < toy.look) { const e = ev[toy.idx++]; if (e.t >= NT.now - 0.01) toy.on(e, W.t + (e.t - NT.now) * NT.unit); } }
+  }
+  const hueOf = p => new THREE.Color().setHSL(0.6 - p * 0.58, 0.85, 0.6);
+
+  // 1) note stones: the glowing orb hops stone to stone near your flight line, landing on each note
+  toys.push({ key: 'stones', look: 3.2, idx: 0, on(e, wt) { W.orbOn = true; scheduleLanding(wt, e.p, e.v); } });
+
+  // 2) leaping fish: they leave the water just before a note and splash back in on it
+  const FISH = [], WATERSPOTS = []; let fishK = 0, fishLastT = -9, spotT = 0;
+  function buildFish() {
+    const g = new THREE.SphereGeometry(1, 16, 10); g.scale(0.11, 0.12, 0.42); const tail = new THREE.ConeGeometry(0.12, 0.26, 4); tail.rotateX(-Math.PI / 2); tail.scale(0.3, 1, 1); tail.translate(0, 0, -0.5);
+    const parts = [g, tail].map(x => x.toNonIndexed()), pos = [], nrm = []; for (const x of parts) { pos.push(...x.attributes.position.array); nrm.push(...x.attributes.normal.array); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    for (let i = 0; i < 10; i++) { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: C('#b8c4cc'), metalness: 0.7, roughness: 0.28, emissive: C(0, 0, 0) })); m.visible = false; m.castShadow = true; scene.add(m); FISH.push({ m, on: false, t0: 0, t1: 0, p0: V(), p1: V(), h: 1, splash0: false }); }
+  }
+  function refreshSpots() {
+    WATERSPOTS.length = 0; if (!water || !water.visible) return; cam.getWorldDirection(tv); const fl = Math.hypot(tv.x, tv.z) || 1, ux = tv.x / fl, uz = tv.z / fl;
+    for (let i = 0; i < 140 && WATERSPOTS.length < 16; i++) { const dist = R(12, 130), lat = R(-0.6, 0.6) * dist, x = cam.position.x + ux * dist - uz * lat, z = cam.position.z + uz * dist + ux * lat;
+      if (heightAt(x, z) < SC.water - 0.25 && heightAt(x + 1.5, z) < SC.water && heightAt(x - 1.5, z) < SC.water && heightAt(x, z + 1.5) < SC.water) WATERSPOTS.push(V(x, SC.water, z)); }
+  }
+  toys.push({ key: 'fish', look: 1.0, idx: 0, on(e, wt) {
+    if (!WATERSPOTS.length || wt - fishLastT < 0.3) return; fishLastT = wt;
+    const F = FISH[fishK]; fishK = (fishK + 1) % FISH.length; const dur = clamp(wt - W.t, 0.45, 0.95), sp = pick(WATERSPOTS), a = rnd() * 6.283, len = R(1.4, 2.6) * (0.7 + e.p * 0.6);
+    F.p0.set(sp.x + R(-1, 1), SC.water - 0.15, sp.z + R(-1, 1)); F.p1.set(F.p0.x + Math.cos(a) * len, SC.water - 0.15, F.p0.z + Math.sin(a) * len);
+    F.t0 = wt - dur; F.t1 = wt; F.h = 1.0 + e.p * 2.2 + e.v * 0.6; F.on = true; F.splash0 = false; F.col = hueOf(e.p); F.s = R(1.5, 2.1); F.m.scale.setScalar(F.s);
+  } });
+  function updateFish() {
+    spotT -= 1 / 60; if (spotT < 0) { spotT = 0.5; refreshSpots(); }
+    const night = curTod === 'night' || curTod === 'dusk';
+    for (const F of FISH) { if (!F.on) continue; const u = (W.t - F.t0) / (F.t1 - F.t0);
+      if (u < 0) { F.m.visible = false; continue; }
+      if (!F.splash0) { F.splash0 = true; ripple(F.p0, 0.45); burst(F.p0, 8, tc.setRGB(1.1, 1.2, 1.3), 1.4, 0.5, 0.6); }
+      if (u >= 1) { F.on = false; F.m.visible = false; ripple(F.p1, 0.9); burst(V(F.p1.x, SC.water + 0.05, F.p1.z), 16, tc.copy(F.col).multiplyScalar(night ? 2.2 : 1.3), 2.6, 0.8, 0.8); continue; }
+      const x = mix(F.p0.x, F.p1.x, u), z = mix(F.p0.z, F.p1.z, u), y = SC.water - 0.15 + 4 * F.h * u * (1 - u);
+      const vy = 4 * F.h * (1 - 2 * u), vh = Math.hypot(F.p1.x - F.p0.x, F.p1.z - F.p0.z);
+      F.m.position.set(x, y, z); F.m.rotation.set(0, 0, 0); F.m.rotation.order = 'YXZ'; F.m.rotation.y = Math.atan2(F.p1.x - F.p0.x, F.p1.z - F.p0.z); F.m.rotation.x = -Math.atan2(vy, vh) + Math.sin(W.t * 30) * 0.08; F.m.visible = true;
+      F.m.material.emissive.copy(F.col).multiplyScalar(night ? 0.9 : 0.06); }
+  }
+
+  // 3) lantern wave: each note lights the next lantern along the trail; windows breathe with the bass
+  const LAMPL = []; let lampSeq = [], lampI = 0, lampT = 0, lampK = 0;
+  function buildLampLights() { for (let i = 0; i < 4; i++) { const l = new THREE.PointLight(0xffb060, 0, 18, 2); scene.add(l); LAMPL.push({ l, a: 0 }); } }
+  function refreshLamps() { cam.getWorldDirection(tv); lampSeq = props.items.filter(it => it.v === LAMPV && (it.x - cam.position.x) * tv.x + (it.z - cam.position.z) * tv.z > -10 && Math.hypot(it.x - cam.position.x, it.z - cam.position.z) < 170).sort((a, b) => b.z - a.z); if (lampI >= lampSeq.length) lampI = 0; }
+  toys.push({ key: 'lanterns', look: 0.05, idx: 0, on(e, wt) {
+    FXQ.push({ t: wt, fn: () => { if (!lampSeq.length) return; const it = lampSeq[lampI % lampSeq.length]; lampI++; const L = LAMPL[lampK]; lampK = (lampK + 1) % LAMPL.length;
+      L.l.position.set(it.x, it.y + 2.25, it.z + 0.5); L.a = 1; L.l.color.copy(hueOf(e.p)).lerp(C(1, 0.7, 0.4), 0.55);
+      burst(V(it.x, it.y + 2.3, it.z + 0.5), 10, tc.copy(L.l.color).multiplyScalar(2), 1.2, 0.5, 1.1); } });
+  } });
+  function updateLamps(dt) {
+    lampT -= dt; if (lampT < 0) { lampT = 1; refreshLamps(); }
+    const night = curTod === 'night' || curTod === 'dusk' ? 1 : curTod === 'golden' ? 0.5 : 0.2;
+    for (const L of LAMPL) { L.a *= Math.exp(-dt * 2.5); L.l.intensity = L.a * 60 * night; }
+  }
+  function updateToys(dt) { ntTick(); if (TOY.fish) updateFish(); updateLamps(dt); if (WIN.base == null) WIN.base = WIN.value; WIN.value = WIN.base * (1 + W.kick * 0.5); }
+
   // ---------------- music hooks ----------------
   function onNote(pitch, vel = 0.8) { W.flare = Math.min(1.6, W.flare + 0.5 * vel); }
   function onBass(v = 0.7) { const g = U.gust.value[W.gustI]; W.gustI = (W.gustI + 1) % 4; cam.getWorldDirection(tv); g.set(cam.position.x + tv.x * R(6, 30) + R(-10, 10), cam.position.z + tv.z * R(6, 30) + R(-10, 10), W.t, (W.calm ? 0.25 : 0.45) * v); }
@@ -997,7 +1072,7 @@ const World = (() => {
     W.level += (M.level - W.level) * Math.min(1, dt * 0.6); W.levelSlow += (M.level - W.levelSlow) * Math.min(1, dt * 0.05);
     W.hit *= Math.exp(-dt * 5); W.kick *= Math.exp(-dt * 6); W.flare *= Math.exp(-dt * 3); W.chordFlash *= Math.exp(-dt * 1.2); W.swell *= Math.exp(-dt * 0.7);
     U.windAmp.value = (M.calm ? 0.12 : 0.18) + W.level * (M.calm ? 0.2 : 0.45); U.cloudSpeed.value = 0.01 + W.level * 0.015;
-    moodTickCam(dt); flight(dt); followCam(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
+    moodTickCam(dt); flight(dt); followCam(dt); updateToys(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
     updateTiles(cam.position.x, cam.position.z, 6); updateGrass(cam.position.x, cam.position.z, W.t < 0.3 ? null : 4);
     pumpContent(false);
     if (frames % 3 === 0 || W.t < 0.3) { cam.updateMatrixWorld(); pmat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(pmat); cullSet(trees, NEAR_TREE, 1700); cullSet(rocks, 600, 600); cullSet(props, 3000, 3000); if (frames % 30 === 0) gatherChimneys(); }
@@ -1039,15 +1114,14 @@ const World = (() => {
     S = { E: sm, chords: arr.chords, lenJb: ch.lenJb, endJb: arr.endJb, lead: arr.events.filter(e => e.k === 'lead' && e.d > 0.09), bass: arr.events.filter(e => e.k === 'bass'), drums: arr.events.filter(e => e.k === 'drum'), pL: 0, pB: 0, pD: 0, pO: 0, last: -1, ci: -1, bar: -1, spj: 60 / (ch.bpm || 90) };
     const ld = S.lead, avgN = ld.length ? ld.reduce((a, e) => a + e.n, 0) / ld.length : 70;
     songMood = { minor: !!ch.key.minor, energy: E.reduce((a, b) => a + b, 0) / E.length, bpm: ch.bpm, bright: clamp((avgN - 58) / 24, 0, 1) };
-    ORB.land.forEach(L => { ORB.stones && ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null;
+    ntSet(S.lead.map(e => ({ t: e.t, p: clamp((e.n - 58) / 28, 0, 1), v: e.v ?? 0.8 })), S.spj, null, 'midi');
     if (want === 'auto') setTheme('auto');
   }
   function frame(jb, dt, opts) {
     if (!Rr || !S || mode !== 'timeline') return;
     if (opts.spj) S.spj = opts.spj;
     if (jb < S.last - 0.5 || jb > S.last + 8) { S.pL = firstAfter(S.lead, jb - 0.01); S.pB = firstAfter(S.bass, jb - 0.01); S.pD = firstAfter(S.drums, jb - 0.01); S.pO = firstAfter(S.lead, jb + 0.05); ORB.land.forEach(L => { ORB.stones && ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null; }
-    // the orb sees the future: schedule stones for notes up to 3.2 s ahead
-    if (ready && opts.playing !== false) while (S.pO < S.lead.length && (S.lead[S.pO].t - jb) * S.spj < 3.2) { const e = S.lead[S.pO++]; if (e.t >= jb) scheduleLanding(W.t + (e.t - jb) * S.spj, clamp((e.n - 58) / 28, 0, 1), e.v ?? 0.8); }
+    NT.now = jb; NT.unit = S.spj; NT.hold = opts.playing === false;
     while (S.pL < S.lead.length && S.lead[S.pL].t <= jb) { const e = S.lead[S.pL++]; if (jb - e.t < 1) onNote(clamp((e.n - 58) / 28, 0, 1), e.v ?? 0.8); }
     while (S.pB < S.bass.length && S.bass[S.pB].t <= jb) { const e = S.bass[S.pB++]; if (jb - e.t < 1) onBass(0.7); }
     let big = false;
@@ -1077,11 +1151,15 @@ const World = (() => {
     LV.onT -= dt; for (const o of (f.onsets || [])) { if (LV.onT > 0) break; LV.onT = 0.12; onNote(o, 0.7); }
     if ((f.kickHit || 0) > 0) onBass(Math.min(1, f.kickHit));
     const ck = f.chord ? f.chord.root + f.chord.q : null; if (ck !== LV.chordKey) { if (ck) onChord(f.chord); LV.chordKey = ck; }
-    // live audio can't see ahead, so the orb lands on the predicted beat grid
-    if (ready && f.active && (f.tempoConf || 0) > 0.4 && f.barDur > 0.6) {
-      const per = f.barDur / 4, nextIn = ((f.downbeatIn % per) + per) % per; const busy = (MD.on / Math.max(1, MD.t)) > 3.5 && per > 0.45;
-      const stepT = busy ? per / 2 : per;
-      for (let k = 0; k < 8; k++) { const t = W.t + nextIn + k * stepT; if (t - W.t > 2.6) break; const lastT = ORB.land.length ? ORB.land[ORB.land.length - 1].t : -1; if (t > lastT + stepT * 0.6) scheduleLanding(t, clamp(f.pitch ?? 0.5, 0, 1), 0.7); }
+    // live audio can't see ahead: unless a scanned file is playing, toys follow the predicted beat grid
+    if (NT.kind === 'midi') ntSet(null);
+    if (NT.kind !== 'file') {
+      NT.unit = 1; NT.clock = null; NT.now = W.t; NT.hold = false;
+      if (ready && f.active && (f.tempoConf || 0) > 0.4 && f.barDur > 0.6) { NT.kind = 'grid';
+        const per = f.barDur / 4, nextIn = ((f.downbeatIn % per) + per) % per, busy = (MD.on / Math.max(1, MD.t)) > 3.5 && per > 0.45, stepT = busy ? per / 2 : per;
+        for (let k = 0; k < 10; k++) { const t = W.t + nextIn + k * stepT; if (t - W.t > 3.2) break; const lastT = NT.ev.length ? NT.ev[NT.ev.length - 1].t : -1; if (t > lastT + stepT * 0.6) NT.ev.push({ t, p: clamp(f.pitch ?? 0.5, 0, 1), v: 0.7 }); }
+        if (NT.ev.length > 400) { const cut = NT.ev.length - 200; NT.ev = NT.ev.slice(cut); for (const t of toys) t.idx = Math.max(0, t.idx - cut); }
+      }
     }
     if (f.active && (f.tempoConf || 0) > 0.4 && f.barDur > 0.6) { const per = f.barDur / 4; W.beatPer = per; W.nextBeat = W.t + (((f.downbeatIn % per) + per) % per); } else W.beatPer = 0;
     const downbeat = (f.tempoConf || 0) > 0.4 && f.downbeatIn != null && f.downbeatIn < dt * 1.5;
@@ -1089,7 +1167,9 @@ const World = (() => {
   }
 
   return { init, load, frame, live, frameLive, setBaseHue() {}, setTheme, setTime,
-    set orb(v) { W.orbOn = !!v; }, get orb() { return W.orbOn; },
+    set orb(v) { TOY.stones = !!v; }, get orb() { return TOY.stones; },
+    set toys(o) { Object.assign(TOY, o || {}); if (!TOY.stones) clearStones(); }, get toys() { return Object.assign({}, TOY); },
+    setTrack(ev, unit, clock) { ntSet(ev, unit, clock, ev ? 'file' : 'none'); }, get noteFeed() { return NT.kind; },
     set avatar(v) { setAvatar(v); }, get avatar() { return AV.kind; },
     _fly(keys, secs) { for (const k of keys) KEYS[k] = true; W.noRender = true; for (let i = 0; i < secs * 30; i++) frameLive(1 / 30, { level: 0.5, active: false, onsets: [] }, {}); for (const k of keys) KEYS[k] = false; W.noRender = false; composer.render(); return { pos: AV.pos.toArray().map(Math.round), yaw: +AV.yaw.toFixed(2), ctl: +AV.ctl.toFixed(2) }; },
     _click(x, y) { return interact(x, y); },
@@ -1099,6 +1179,7 @@ const World = (() => {
     set letterbox(v) { W.letterbox = !!v; resize(); }, get mode() { return mode; }, get ok() { return !!Rr; }, get ready() { return ready; },
     _villages() { return villages.map(v => ({ x: v.x, z: v.z, d: v.d })); },
     _goto(x, y, z, yaw) { AV.pos.set(x, y, z); AV.yaw = yaw; AV.pitch = 0; W.d = -z; AV.camInit = false; AV.lastInput = W.t; pumpContent(true); updateTiles(x, z, null, true); updateGrass(x, z, null, true); },
+    _toys() { return { kind: NT.kind, now: +NT.now.toFixed(2), fish: FISH.filter(f => f.on).length, stones: ORB.land.length, spots: WATERSPOTS.length, lamps: lampSeq.length }; },
     _dbg() { return { AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
     _shot(k) { const m = { low: 0.02, mid: 0.45, high: 0.98 }[k]; if (m != null) { GL.mood = m; W.levelSlow = 0.4; glideReset(); } },
     _ff(n, dt, f) { W.noRender = true; for (let i = 0; i < n; i++) frameLive(dt, Object.assign({ level: 0.5, pitch: 0.5, active: true, tempoConf: 0.9, barDur: 2, downbeatIn: 2 - ((W.t % 2) + 2) % 2 }, f || {}, { onsets: i % 7 === 0 ? [Math.random()] : [], kickHit: i % 15 === 0 ? 1 : 0 }), {}); W.noRender = false; composer.render(); } };

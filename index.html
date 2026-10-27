@@ -161,6 +161,9 @@ body.loading .loadmsg { display: block; }
   <div class="field"><h3>Scene</h3>
     <div class="seg" id="worldSeg"></div>
     <div class="hint">Auto picks the landscape from the mood of the song.</div></div>
+  <div class="field"><h3>Music toys</h3>
+    <div class="seg" id="toySeg"><button class="btn" type="button" data-v="fish">Leaping fish</button><button class="btn" type="button" data-v="stones">Note stones</button><button class="btn" type="button" data-v="lanterns">Lantern wave</button></div>
+    <div class="hint">Things in the world that play along with the notes. With an audio file the whole song is scanned first, so they land exactly on the notes; live tab or mic audio follows the beat.</div></div>
   <div class="field"><h3>You are</h3>
     <div class="seg" id="avSeg"><button class="btn" type="button" data-v="bird">A bird</button><button class="btn" type="button" data-v="spirit">A spirit</button><button class="btn" type="button" data-v="none">Just the view</button></div>
     <div class="hint">Hands off and it flies itself. WASD or arrows to steer, Shift to soar, drag to look, scroll to zoom, click things to touch them.</div></div>
@@ -168,7 +171,7 @@ body.loading .loadmsg { display: block; }
     <div class="seg" id="todSeg"></div>
     <div class="hint">Auto follows your clock.</div></div>
   <div class="field"><h3>Visuals</h3>
-    <div class="seg"><button class="btn" type="button" id="mellowBtn">Calm visuals</button><button class="btn" type="button" id="barsBtn">Cinema bars</button><button class="btn" type="button" id="orbBtn">Note orb (experimental)</button><button class="btn" type="button" id="chordsBtn">Chord names</button><button class="btn" type="button" id="sheetBtn">Chord chart</button></div></div>
+    <div class="seg"><button class="btn" type="button" id="mellowBtn">Calm visuals</button><button class="btn" type="button" id="barsBtn">Cinema bars</button><button class="btn" type="button" id="chordsBtn">Chord names</button><button class="btn" type="button" id="sheetBtn">Chord chart</button></div></div>
   <div class="field"><h3>Jazz covers</h3>
     <div class="seg" id="leadSeg"><button class="btn" type="button" data-v="flugel">Flugelhorn</button><button class="btn" type="button" data-v="vibes">Vibraphone</button><button class="btn" type="button" data-v="rhodes">Rhodes</button></div>
     <div class="lab" style="display:flex;justify-content:space-between;font:500 11px/1 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.1em"><label for="tempo">Tempo</label><output id="tempoOut">63 bpm</output></div><input type="range" id="tempo" min="40" max="160" value="63">
@@ -681,7 +684,44 @@ const Listen = (() => {
   // audio file: the most reliable source — plays through this page and is analysed directly
   async function startFile(file) {
     el = new Audio(); el.src = URL.createObjectURL(file); el.loop = true; el.crossOrigin = 'anonymous';
-    kind = 'file'; begin(ac2 => ac2.createMediaElementSource(el), true); el.play().catch(() => {}); return el;
+    kind = 'file'; begin(ac2 => ac2.createMediaElementSource(el), true); el.play().catch(() => {});
+    track = null; const myEl = el;
+    file.arrayBuffer().then(ab => ac.decodeAudioData(ab)).then(buf => detectOnsets(buf)).then(t => { if (el !== myEl) return; track = t; onTrack && onTrack(t); }).catch(e => console.warn('note scan failed', e));
+    return el;
+  }
+  // ---- whole-song note scan (audio files only): spectral-flux onsets with a pitch proxy, computed before they play ----
+  let track = null, onTrack = null;
+  function fft(re, im, n) {
+    for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let len = 2; len <= n; len <<= 1) { const h = len >> 1, ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+      for (let i = 0; i < n; i += len) { let cr = 1, ci = 0; for (let k = 0; k < h; k++) { const a = i + k, b = a + h, br = re[b] * cr - im[b] * ci, bi = re[b] * ci + im[b] * cr; re[b] = re[a] - br; im[b] = im[a] - bi; re[a] += br; im[a] += bi; const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t; } } }
+  }
+  async function detectOnsets(buf) {
+    const sr0 = buf.sampleRate, ds = Math.max(1, Math.round(sr0 / 11025)), sr = sr0 / ds, c0 = buf.getChannelData(0), c1 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : c0;
+    const n = Math.floor(c0.length / ds), x = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let a = 0; for (let k = 0; k < ds; k++) { const j = i * ds + k; a += c0[j] + c1[j]; } x[i] = a / (2 * ds); }
+    const N = 512, H = 128, F = Math.max(0, Math.floor((n - N) / H)), win = new Float32Array(N); for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    const re = new Float32Array(N), im = new Float32Array(N), prev = new Float32Array(N / 2), flux = new Float32Array(F), cen = new Float32Array(F);
+    const b0 = Math.max(1, Math.floor(110 / sr * N)), b1 = Math.min(N / 2, Math.floor(5200 / sr * N));
+    for (let f = 0; f < F; f++) {
+      if (f % 2500 === 0) await new Promise(r => setTimeout(r, 0));
+      const o = f * H; for (let i = 0; i < N; i++) { re[i] = x[o + i] * win[i]; im[i] = 0; } fft(re, im, N);
+      let fl = 0, cs = 0, ms = 0; for (let b = b0; b < b1; b++) { const m = Math.log1p(30 * Math.hypot(re[b], im[b])), d = m - prev[b]; if (d > 0) fl += d; prev[b] = m; cs += b * m; ms += m; }
+      flux[f] = fl; cen[f] = ms > 0 ? cs / ms : 0;
+    }
+    const fps = sr / H, w = Math.max(2, Math.round(0.22 * fps)), P = new Float64Array(F + 1); for (let f = 0; f < F; f++) P[f + 1] = P[f] + flux[f];
+    const gm = P[F] / Math.max(1, F), raw = []; let lastT = -1;
+    for (let f = 3; f < F - 3; f++) {
+      const a = Math.max(0, f - w), b = Math.min(F, f + w + 1), mean = (P[b] - P[a]) / (b - a), thr = mean * 1.55 + gm * 0.35, v = flux[f];
+      if (v <= thr || v < flux[f - 1] || v < flux[f + 1] || v < flux[f - 2] || v < flux[f + 2] || v < flux[f - 3] || v < flux[f + 3]) continue;
+      const t = (o => o)((f * H + N * 0.5) / sr + 0.012); if (t - lastT < 0.11) { if (raw.length && v / thr > raw[raw.length - 1].s) raw[raw.length - 1] = { t, s: v / thr, c: cen[f] }; continue; }
+      raw.push({ t, s: v / thr, c: cen[f] }); lastT = t;
+    }
+    // thin very busy passages so the marble stays readable (keep the strongest within any 0.16 s)
+    const out = []; for (const o of raw) { const l = out[out.length - 1]; if (l && o.t - l.t < 0.16) { if (o.s > l.s * 1.3) out[out.length - 1] = o; } else out.push(o); }
+    const cs = out.map(o => o.c).sort((a, b) => a - b), rank = c => { let lo = 0, hi = cs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (cs[m] < c) lo = m + 1; else hi = m; } return cs.length > 1 ? lo / (cs.length - 1) : 0.5; };
+    const smax = out.reduce((m, o) => Math.max(m, o.s), 1);
+    return out.map(o => ({ t: o.t, p: rank(o.c), v: Math.min(1, 0.35 + 0.65 * (o.s - 1) / Math.max(0.5, smax - 1)) }));
   }
   // for testing: analyze any audio node instead of a shared screen
   function attachNode(context, node) { ac = context; sr = ac.sampleRate; an = ac.createAnalyser(); an.fftSize = 4096; an.smoothingTimeConstant = 0; node.connect(an); const z = ac.createGain(); z.gain.value = 0; an.connect(z); z.connect(ac.destination); spec = new Float32Array(an.frequencyBinCount); td = new Float32Array(an.fftSize); prevLog = new Float32Array(an.frequencyBinCount); binHz = sr / an.fftSize; F.active = true; reset(); startLoop(); }
@@ -689,7 +729,7 @@ const Listen = (() => {
     try { stream && stream.getTracks().forEach(t => t.stop()); } catch (e) {}
     try { src && src.disconnect(); } catch (e) {}
     try { ac && ac.close(); } catch (e) {}
-    try { if (el) { el.pause(); URL.revokeObjectURL(el.src); } } catch (e) {} el = null; kind = null;
+    try { if (el) { el.pause(); URL.revokeObjectURL(el.src); } } catch (e) {} el = null; kind = null; track = null;
     clearInterval(loopT); stream = null; ac = null; an = null; F.active = false; reset(); onEnd && onEnd();
   }
 
@@ -795,7 +835,7 @@ const Listen = (() => {
     F.tempoConf += (conf - F.tempoConf) * 0.4; F.bpm = 60 / S.period;
   }
 
-  return { start, startMic, startFile, stop, update, reset, attachNode, F, get active() { return F.active; }, get kind() { return kind; }, get audio() { return el; }, set onEnd(fn) { onEnd = fn; } };
+  return { start, startMic, startFile, stop, update, reset, attachNode, F, get active() { return F.active; }, get kind() { return kind; }, get audio() { return el; }, get track() { return track; }, set onTrack(fn) { onTrack = fn; }, get latency() { return ac ? (ac.outputLatency || 0) + (ac.baseLatency || 0) : 0; }, detectOnsets, set onEnd(fn) { onEnd = fn; } };
 })();
 
 </script>
@@ -804,7 +844,7 @@ const Listen = (() => {
 // ===== App =====
 (() => {
   const $ = id => document.getElementById(id);
-  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, orb: false, avatar: 'bird' };
+  const S = { lead: 'flugel', tempo: null, swing: 62, reharm: 1, vol: 80, room: true, chords: true, sheet: false, mellow: matchMedia('(prefers-reduced-motion: reduce)').matches, next: true, shareSeen: false, world: 'auto', tod: 'auto', bars: true, toys: { fish: true, stones: true, lanterns: true }, avatar: 'bird' };
   try { Object.assign(S, JSON.parse(localStorage.getItem('vibegen.settings') || '{}')); } catch (e) {}
   const VIS = window.World || null;
   const save = () => { try { localStorage.setItem('vibegen.settings', JSON.stringify(S)); } catch (e) {} };
@@ -947,14 +987,15 @@ const Listen = (() => {
   addEventListener('drop', e => { e.preventDefault(); dragN = 0; $('dropZone').hidden = true; if (e.dataTransfer?.files?.length) addFiles([...e.dataTransfer.files]); });
 
   // ---------- listening ----------
-  Listen.onEnd = () => { paintListen(); paintHeader(); };
+  Listen.onEnd = () => { paintListen(); paintHeader(); if (VIS && VIS.setTrack) VIS.setTrack(null); };
+  Listen.onTrack = t => { if (VIS && VIS.setTrack && Listen.kind === 'file') { VIS.setTrack(t, 1, () => Listen.audio ? Listen.audio.currentTime - Listen.latency : null); toast(`Song scanned: ${t.length} notes. The world plays along.`); } };
   function paintListen() { $('listenBtn').classList.toggle('listening', Listen.active); $('listenLbl').textContent = Listen.active ? ({ file: 'Playing file', mic: 'Mic on', share: 'Listening' }[Listen.kind] || 'Listening') + ' · stop' : 'Music source'; }
   async function shareNow() {
     $('shareHelp').hidden = true; S.shareSeen = true; save();
     try { await Listen.start(); toast('Listening. The world now follows the music.'); } catch (e) { if (e.name !== 'NotAllowedError') toast(e.message); else toast('Sharing was cancelled.'); }
     paintListen(); paintHeader();
   }
-  const srcStart = async fn => { $('shareHelp').hidden = true; if (mode === 'cover') coverStop(); try { if (Listen.active) Listen.stop(); await fn(); toast('Listening. The world now follows the music.'); } catch (e) { toast(e.name === 'NotAllowedError' ? 'Permission was declined.' : e.message); } paintListen(); paintHeader(); };
+  const srcStart = async fn => { $('shareHelp').hidden = true; if (mode === 'cover') coverStop(); try { if (Listen.active) Listen.stop(); if (VIS && VIS.setTrack) VIS.setTrack(null); await fn(); toast('Listening. The world now follows the music.'); } catch (e) { toast(e.name === 'NotAllowedError' ? 'Permission was declined.' : e.message); } paintListen(); paintHeader(); };
   $('listenBtn').onclick = () => { if (Listen.active) { Listen.stop(); paintListen(); paintHeader(); return; } $('shareHelp').hidden = false; };
   $('micGo').onclick = () => srcStart(() => Listen.startMic());
   $('audioFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) srcStart(() => Listen.startFile(f)); };
@@ -964,7 +1005,7 @@ const Listen = (() => {
   function syncControls() {
     for (const b of $('leadSeg').children) b.classList.toggle('on', b.dataset.v === S.lead);
     for (const b of $('reSeg').children) b.classList.toggle('on', +b.dataset.v === S.reharm);
-    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); $('orbBtn').classList.toggle('on', S.orb); for (const b of $('avSeg').children) b.classList.toggle('on', b.dataset.v === S.avatar); $('nextBtn').classList.toggle('on', S.next);
+    $('roomBtn').classList.toggle('on', S.room); $('mellowBtn').classList.toggle('on', S.mellow); for (const b of $('toySeg').children) b.classList.toggle('on', !!(S.toys || {})[b.dataset.v]); for (const b of $('avSeg').children) b.classList.toggle('on', b.dataset.v === S.avatar); $('nextBtn').classList.toggle('on', S.next);
     for (const b of $('worldSeg').children) b.classList.toggle('on', b.dataset.v === S.world);
     for (const b of $('todSeg').children) b.classList.toggle('on', b.dataset.v === S.tod);
     $('barsBtn').classList.toggle('on', S.bars);
@@ -975,7 +1016,7 @@ const Listen = (() => {
     $('vol').value = S.vol; $('volOut').textContent = S.vol + '%';
     for (const id of ['tempo', 'swing', 'vol']) { const el = $(id); el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); }
   }
-  $('orbBtn').onclick = () => { S.orb = !S.orb; save(); if (VIS) VIS.orb = S.orb; syncControls(); };
+  $('toySeg').onclick = e => { const v = e.target.dataset?.v; if (!v) return; S.toys = Object.assign({ fish: true, stones: true, lanterns: true }, S.toys); S.toys[v] = !S.toys[v]; save(); if (VIS) VIS.toys = S.toys; syncControls(); };
   $('avSeg').onclick = e => { const v = e.target.dataset?.v; if (!v) return; S.avatar = v; save(); if (VIS) VIS.avatar = v; syncControls(); };
   $('todSeg').onclick = e => { const v = e.target.dataset?.v; if (!v || !VIS || !VIS.ok) return; S.tod = v; save(); VIS.setTime(v); syncControls(); paintHeader(); };
   $('barsBtn').onclick = () => { S.bars = !S.bars; save(); if (VIS && VIS.ok) VIS.letterbox = S.bars; syncControls(); };
@@ -1055,7 +1096,7 @@ const Listen = (() => {
   // ---------- boot ----------
   (async () => {
     try { if (VIS) VIS.init($('gl')); else toast('The 3D engine could not load. Music still plays.'); } catch (e) { console.error(e); toast('3D is not supported on this device. Music still plays.'); }
-    if (VIS && VIS.ok) { VIS.avatar = S.avatar; $('worldSeg').innerHTML = VIS.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = VIS.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); VIS.setTime(S.tod); VIS.letterbox = S.bars; VIS.setTheme(S.world); VIS.orb = S.orb; VIS.live(); }
+    if (VIS && VIS.ok) { VIS.avatar = S.avatar; VIS.toys = S.toys; $('worldSeg').innerHTML = VIS.themes.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); $('todSeg').innerHTML = VIS.times.map(t => `<button class="btn" type="button" data-v="${t.key}">${t.name}</button>`).join(''); VIS.setTime(S.tod); VIS.letterbox = S.bars; VIS.setTheme(S.world); VIS.live(); }
     await DB.open(); library = await DB.all(); renderCovers();
     syncControls(); paintHeader(); paintListen(); requestAnimationFrame(frame);
     paintHeader();
