@@ -397,7 +397,7 @@ const World = (() => {
     { const gt = trees.variants.find(v => v.giant); props.variants.push({ r: gt.r, near: Batch(gt.near.meshes.map(m => ({ geo: m.geometry, mat: m.material })), 6, { shadow: true }), kind: 'giant' }); }
     // grass + flowers
     buildGrass(); buildBloom();
-    buildOrb(); buildStreaks(); buildCreatures(); buildVillageKit(); buildFish(); buildLampLights(); buildCircles(); buildSkyLanterns(); buildShrooms();
+    buildOrb(); buildStreaks(); buildCreatures(); buildVillageKit(); buildFish(); buildLampLights(); buildCircles(); buildSkyLanterns(); buildShrooms(); buildFolk();
     { const n = 500, pos = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) pos[i] = Math.random();
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       motes = new THREE.Points(g, new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { camPos: { value: V() }, box: { value: V(70, 30, 90) }, amt: { value: 0.4 }, hit: { value: 0 }, col: { value: C(1, 1, 1) }, scale: { value: 500 }, time: U.time, blink: { value: 0 }, size: { value: 0.1 } },
@@ -510,7 +510,7 @@ const World = (() => {
     const cnt = Math.round(GN * SC.grass * (c.r <= 1 ? 1 : 0.6));
     for (let i = 0; i < cnt; i++) {
       const x = x0 + r() * GCH, z = z0 + r() * GCH, rot = r() * 6.283, sv = r(), fl = r(), fk = r();
-      if (Math.abs(x - trailX(-z)) < 1.6) continue; if (plots.length && plots.some(q => (x - q.x) * (x - q.x) + (z - q.z) * (z - q.z) < q.r2)) continue;
+      if (Math.abs(x - trailX(-z)) < 1.6) continue; if (nearFire(x, z, 4.2)) continue; if (plots.length && plots.some(q => (x - q.x) * (x - q.x) + (z - q.z) * (z - q.z) < q.r2)) continue;
       const h = heightAt(x, z); if (h < SC.water + 0.35 || h > SC.snow - 35) continue; if (slopeAt(x, z, h) > 0.75) continue;
       const patch = vn(x * 0.05 + 3.3, z * 0.05 - 1.7); if (patch < 0.25 && sv < 0.7) continue;
       const sc2 = (0.55 + patch * 0.9) * (0.75 + sv * 0.5);
@@ -611,7 +611,7 @@ const World = (() => {
     const plots = houses.filter(q => q.x > x0 - 8 && q.x < x0 + CH + 8 && q.z > z0 - 8 && q.z < z0 + CH + 8), dens = Math.min(1, SC.flowers + 0.25), pl = [];
     BLOOM_SP.forEach((sp, si) => { const M = BL.meshes[si], aI = BL.aI[si], cap = sp.cap; let n = 0;
       for (let tries = 0; tries < cap * 3 && n < cap; tries++) { const x = x0 + r() * CH, z = z0 + r() * CH, k = r(), yaw = r() * 6.283, sv = r(), l1 = r() - 0.5, l2 = r() - 0.5, sd = r();
-        if (k > meadowAt(x, z) * dens * (si === 2 ? 0.55 : 1)) continue; if (Math.abs(x - trailX(-z)) < 1.5) continue;
+        if (k > meadowAt(x, z) * dens * (si === 2 ? 0.55 : 1) * (nearVillage(x, z) ? 0.3 : 1)) continue; if (nearFire(x, z, 7)) continue; if (Math.abs(x - trailX(-z)) < 1.5) continue;
         const h = heightAt(x, z); if (h < SC.water + 0.4 || h > SC.snow - 40 || slopeAt(x, z, h) > 0.55) continue;
         if (plots.length && plots.some(q => (x - q.x) * (x - q.x) + (z - q.z) * (z - q.z) < q.r2)) continue;
         const sc = mix(sp.s[0], sp.s[1], sv * sv); te.set(l1 * 0.3, yaw, l2 * 0.3); tq.setFromEuler(te); tm.compose(tv.set(x, h - 0.03, z), tq, ts.set(sc, sc, sc));
@@ -774,10 +774,12 @@ const World = (() => {
 
   // ---------------- villages: cottages, a tower, trail lanterns, lit windows, chimney smoke ----------------
   const LC = h => new THREE.Color(h).convertSRGBToLinear();
+  const FIRES = []; const nearFire = (x, z, r) => FIRES.some(f => (f.x - x) * (f.x - x) + (f.z - z) * (f.z - z) < r * r);
   const WIN = { value: 0 }, houses = []; let villages = [], HV = 0, LAMPV = 0;
   const nearVillage = (x, z) => villages.some(v => (x - v.x) * (x - v.x) + (z - v.z) * (z - v.z) < v.r * v.r);
+  const WHITE_C = new THREE.Color(1, 1, 1);
   function HB() { return { p: [], n: [], c: [], e: [] }; }
-  function hAdd(b, geo, m4, col, em = 0) { const g = geo.index ? geo.toNonIndexed() : geo; if (m4) g.applyMatrix4(m4); const P = g.attributes.position.array, N = g.attributes.normal.array;
+  function hAdd(b, geo, m4, col = WHITE_C, em = 0) { const g = geo.index ? geo.toNonIndexed() : geo; if (m4) g.applyMatrix4(m4); const P = g.attributes.position.array, N = g.attributes.normal.array;
     for (let i = 0; i < P.length; i += 3) { b.p.push(P[i], P[i + 1], P[i + 2]); b.n.push(N[i], N[i + 1], N[i + 2]); b.c.push(col.r, col.g, col.b); b.e.push(em); } }
   function hBuild(b) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(b.c, 3)); g.setAttribute('aEm', new THREE.Float32BufferAttribute(b.e, 1)); g.computeBoundingSphere(); return g; }
   const MX = (x, y, z, sx = 1, sy = 1, sz = 1, ry = 0) => new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)), V(sx, sy, sz));
@@ -845,6 +847,8 @@ const World = (() => {
       if (def.chim) { const c = Math.cos(yaw), sn = Math.sin(yaw); it.chim = V(x + (def.chim.x * c + def.chim.z * sn) * s, h - 0.15 + def.chim.y * s, z + (-def.chim.x * sn + def.chim.z * c) * s); }
       i++;
     }
+    { const tx = trailX(D); let fx = cx, fz = cz; if (Math.abs(fx - tx) < 8) fx = tx + (fx >= tx ? 9 : -9);
+      for (let k = 0; k < 10 && placed.some(q => Math.hypot(q.x - fx, q.z - fz) < q.r + 5); k++) fz += 4; V0.fx = fx; V0.fz = fz; FIRES.push({ x: fx, z: fz }); }
     for (let dd = D - 60; dd <= D + 60; dd += R(13, 18)) { const x = trailX(dd) + 1.7, z = -dd, h = heightAt(x, z); if (h < SC.water + 0.5) continue; props.items.push({ x, y: h - 0.05, z, yaw: Math.PI / 2, s: 1, v: LAMPV }); }
   }
   // chimney smoke: soft puffs that rise and drift with the wind
@@ -871,7 +875,7 @@ const World = (() => {
   // ---------------- content along the journey ----------------
   let lay = [], landmarks = [];
   function resetContent() {
-    trees.items = []; rocks.items = []; props.items = []; CIRC.list = []; CIRC.near = []; SHR.items = []; landmarks = []; villages = []; houses.length = 0; seed = 101 + SC_ORDER.indexOf(cur) * 37;
+    trees.items = []; rocks.items = []; props.items = []; FIRES.length = 0; CIRC.list = []; CIRC.near = []; SHR.items = []; FOLK.trollSpots = []; FOLK.vill = null; FOLK.tree = null; if (FOLK.troll) FOLK.troll.spot = null; landmarks = []; villages = []; houses.length = 0; seed = 101 + SC_ORDER.indexOf(cur) * 37;
     const L = (gap, fn) => ({ gap, fn, next: W.d - 300 });
     const forestMask = (x, z) => sstep(-0.15, 0.3, fbm(x * 0.0035 + 5.1, z * 0.0035 - 2.7, 3));
     const nb = trees.variants.map((v, i) => i), broad = nb.filter(i => trees.variants[i].kind === 'b'), con = nb.filter(i => trees.variants[i].kind === 'c'), bush = nb.filter(i => trees.variants[i].kind === 'bush');
@@ -883,6 +887,7 @@ const World = (() => {
     lay = [
       L([550, 950], D => makeVillage(D)),
       L([500, 900], D => makeCircle(D)),
+      L([900, 1500], D => trollSpot(D)),
       L([22, 55], D => makeShroomRing(D, forestMask)),
       L([0.2, 0.45], D => { const lat = (rnd() < 0.5 ? -1 : 1) * R(14, 220); tryTree(pathX(D) + lat, -D + R(-2, 2)); }),
       L([0.28, 0.65], D => { const lat = (rnd() < 0.5 ? -1 : 1) * R(220, 760); tryTree(pathX(D) + lat, -D + R(-2, 2)); }),
@@ -1069,6 +1074,205 @@ const World = (() => {
       const sp = F.mode === 'run' ? 7 : F.mode === 'walk' ? 1.3 : 0; F.speed += (sp - F.speed) * Math.min(1, dt * 3);
       const nx = o.position.x + Math.sin(F.head) * 2.5, nz = o.position.z + Math.cos(F.head) * 2.5; if (okGround(nx, nz) == null) F.head += dt * 2.5; else if (F.mode === 'walk') F.head += Math.sin(W.t * 0.5 + o.id) * dt * 0.4;
       o.position.x += Math.sin(F.head) * F.speed * dt; o.position.z += Math.cos(F.head) * F.speed * dt; o.position.y = heightAt(o.position.x, o.position.z); o.rotation.y = F.head; F.mx.update(dt);
+    }
+  }
+
+  // ---------------- folk: hobbit villagers round a campfire, a witch, a stone troll, elves, rabbits ----------------
+  const FOLK = { mat: null, glow: { value: 0 }, hob: [], vill: null, fire: null, witch: null, troll: null, trollSpots: [], elves: [], tree: null, rabbits: [], pick: [], t: 0, energy: 0 };
+  const MR = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(sx, sy, sz));
+  const geoOf = fn => { const b = HB(); fn(b); return hBuild(b); };
+  const SPH = (r = 1, w = 12, h = 9) => new THREE.SphereGeometry(r, w, h);
+  function charMaterial() {
+    const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78 });
+    m.onBeforeCompile = sh => { sh.uniforms.chGlow = FOLK.glow;
+      sh.vertexShader = 'attribute float aEm; varying float vEm;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vEm = aEm;');
+      sh.fragmentShader = 'varying float vEm; uniform float chGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vColor.rgb * max(vEm, 0.0) * (0.5 + chGlow * 3.0);');
+    }; m.customProgramCacheKey = () => 'char'; return m;
+  }
+  function cmesh(geo, parent, kind, mat) { const m = new THREE.Mesh(geo, mat || FOLK.mat); m.castShadow = true; m.receiveShadow = true; m.userData.kind = kind; parent.add(m); FOLK.pick.push(m); return m; }
+  function pivot(parent, x, y, z) { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; }
+
+  function makeHobbit() {
+    const skin = LC(pick(['#f2c9a2', '#e8b890', '#d9a27a', '#b88058', '#8a5a3a'])), hair = LC(pick(['#5a3a20', '#8a4a22', '#3a2a1c', '#b07038', '#2a2018', '#c89048'])),
+      vest = LC(pick(['#3f6b3a', '#a8792c', '#8c3a2c', '#3a5a8c', '#6a4a7a', '#b85a3a', '#2f5a52'])), shirt = LC(pick(['#efe6d0', '#e8dcc0', '#d8c8a0', '#e0d0b8'])), pants = LC(pick(['#6a4a30', '#5a4a3a', '#7a6040', '#4a5a3a', '#6a5a48'])), dark = LC('#2a1e14');
+    const root = new THREE.Group(), lady = rnd() < 0.45, cloak = rnd() < 0.3;
+    const body = cmesh(geoOf(b => {
+      hAdd(b, SPH(), MR(0, 0.66, 0, 0, 0, 0, 0.21, 0.25, 0.18), vest);
+      hAdd(b, SPH(1, 10, 8), MR(0, 0.6, 0.055, 0, 0, 0, 0.17, 0.19, 0.15), shirt);
+      hAdd(b, new THREE.CylinderGeometry(0.205, 0.215, 0.05, 14), MR(0, 0.52, 0), dark);
+      if (lady) hAdd(b, new THREE.CylinderGeometry(0.17, 0.3, 0.36, 14, 1, true), MR(0, 0.36, 0), pants.clone().lerp(vest, 0.5));
+      if (cloak) hAdd(b, new THREE.CylinderGeometry(0.12, 0.3, 0.72, 14, 1, true, Math.PI * 0.6, Math.PI * 1.8), MR(0, 0.5, -0.02), LC(pick(['#4a5a34', '#5a3a2a', '#3a4458'])));
+      hAdd(b, SPH(0.15, 16, 12), MR(0, 1.0, 0), skin);
+      hAdd(b, SPH(0.032, 8, 6), MR(0, 0.985, 0.152), skin.clone().multiplyScalar(0.9));
+      for (const s of [-1, 1]) { hAdd(b, new THREE.ConeGeometry(0.035, 0.1, 6), MR(s * 0.15, 1.04, -0.01, 0, 0, -s * 1.15), skin); hAdd(b, SPH(0.018, 6, 4), MR(s * 0.05, 1.03, 0.135), dark); hAdd(b, SPH(0.03, 6, 4), MR(s * 0.075, 0.97, 0.12, 0, 0, 0, 1, 0.6, 0.5), skin.clone().lerp(LC('#ff8070'), 0.25)); }
+      const nh = lady ? 16 : 11; for (let k = 0; k < nh; k++) { const a = k / nh * 6.283, up = 0.4 + (k % 3) * 0.25; const x = Math.sin(a) * 0.13 * Math.cos(up), z = Math.cos(a) * 0.13 * Math.cos(up) - 0.02, y = 1.0 + 0.13 * Math.sin(up);
+        if (z > 0.09 && y < 1.1) continue; hAdd(b, SPH(lady ? 0.065 : 0.058, 7, 5), MR(x, y, z), hair); }
+      hAdd(b, SPH(0.12, 10, 6), MR(0, 1.1, -0.02, 0, 0, 0, 1, 0.55, 1), hair);
+      if (lady) hAdd(b, SPH(0.09, 8, 6), MR(0, 0.86, -0.12, 0, 0, 0, 1, 1.6, 0.7), hair);
+    }), root, 'folk');
+    const arms = [-1, 1].map(s => { const p = pivot(root, s * 0.215, 0.82, 0); cmesh(geoOf(b => { hAdd(b, new THREE.CapsuleGeometry(0.048, 0.2, 4, 8), MR(0, -0.15, 0), shirt); hAdd(b, SPH(0.05, 8, 6), MR(0, -0.31, 0), skin); }), p, 'folk'); return p; });
+    const legs = [-1, 1].map(s => { const p = pivot(root, s * 0.09, 0.44, 0); cmesh(geoOf(b => { hAdd(b, new THREE.CapsuleGeometry(0.065, 0.2, 4, 8), MR(0, -0.17, 0), pants); hAdd(b, SPH(1, 10, 7), MR(0, -0.39, 0.045, 0, 0, 0, 0.085, 0.055, 0.15), skin.clone().multiplyScalar(0.88)); hAdd(b, SPH(0.05, 6, 4), MR(0, -0.35, 0.05, 0, 0, 0, 1.4, 0.7, 1.6), hair); }), p, 'folk'); return p; });
+    const lantern = pivot(arms[1], 0, -0.36, 0.05); cmesh(geoOf(b => { hAdd(b, new THREE.BoxGeometry(0.09, 0.12, 0.09), MR(0, -0.09, 0), LC('#ffb050'), 1); hAdd(b, new THREE.BoxGeometry(0.11, 0.02, 0.11), MR(0, -0.02, 0), dark); hAdd(b, new THREE.BoxGeometry(0.11, 0.02, 0.11), MR(0, -0.16, 0), dark); hAdd(b, new THREE.TorusGeometry(0.03, 0.005, 4, 8), MR(0, 0.01, 0), dark); }), lantern, 'folk');
+    root.scale.setScalar(R(1.1, 1.3)); root.visible = false; scene.add(root);
+    return { root, body, arms, legs, lantern, ph: rnd() * 6.28, mode: 'idle', a: 0, d: 0, dir: 1, lane: 0, y0: 0, jump: -9, speed: R(1.0, 1.4) };
+  }
+  function makeCampfire() {
+    const g = new THREE.Group(), wood = LC('#4a3424'), stone = LC('#8a847a');
+    cmesh(geoOf(b => { for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283; hAdd(b, new THREE.CylinderGeometry(0.07, 0.09, 1.0, 7), MR(Math.cos(a) * 0.28, 0.22, Math.sin(a) * 0.28, 0, -a, 1.1), wood); }
+      for (let i = 0; i < 11; i++) { const a = i / 11 * 6.283; hAdd(b, SPH(0.16, 7, 5), MR(Math.cos(a) * 0.75, 0.05, Math.sin(a) * 0.75, 0, a, 0, 1, 0.7, 1.2), stone); }
+      for (let i = 0; i < 3; i++) { const a = i / 3 * 6.283 + 0.5; hAdd(b, new THREE.CylinderGeometry(0.16, 0.18, 1.8, 8), MR(Math.cos(a) * 3.2, 0.16, Math.sin(a) * 3.2, Math.PI / 2, 0, 0).premultiply(new THREE.Matrix4().makeRotationY(-a)), LC('#5a4430')); }
+      hAdd(b, SPH(0.45, 8, 4), MR(0, 0.0, 0, 0, 0, 0, 1, 0.15, 1), LC('#ff7a30'), 1); }), g, 'fire');
+    const fm = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, uniforms: { time: U.time, amt: { value: 1 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: NOISE + `uniform float time, amt; varying vec2 vUv; void main(){ vec2 uv = vUv; float n = gfbm(vec2(uv.x * 4.0, uv.y * 2.5 - time * 2.6)); float w = 1.0 - abs(uv.x - 0.5) * 2.0 * (1.0 + uv.y * 1.8);
+        float f = smoothstep(0.0, 0.35, w * (1.0 - uv.y * (1.1 - amt * 0.25)) + n * 0.5 - 0.32); vec3 c = mix(vec3(1.0, 0.28, 0.04), vec3(1.0, 0.85, 0.45), f * f) * f * amt * 2.6; gl_FragColor = vec4(c, 1.0); }` });
+    for (let i = 0; i < 3; i++) { const pl = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.7).translate(0, 0.85, 0), fm); pl.rotation.y = i * Math.PI / 3; g.add(pl); }
+    const light = new THREE.PointLight(0xff8a40, 0, 24, 1.6); light.position.y = 1.2; g.add(light);
+    g.visible = false; scene.add(g); return { g, fm, light, flare: 0, x: 0, z: 0, y: 0, emb: 0 };
+  }
+  function makeWitch() {
+    const g = new THREE.Group(), robe = LC('#2a1a3a'), skin = LC('#b8d08a'), straw = LC('#c8a050'), wood = LC('#4a3020'), hatC = LC('#1e1428'), hairC = LC('#e0582a');
+    cmesh(geoOf(b => {
+      hAdd(b, new THREE.CylinderGeometry(0.03, 0.035, 2.0, 6), MR(0, 0, 0, Math.PI / 2), wood);
+      hAdd(b, new THREE.ConeGeometry(0.18, 0.6, 10, 1, true), MR(0, 0, -1.2, -Math.PI / 2), straw);
+      hAdd(b, new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8), MR(0, 0, -0.92, Math.PI / 2), LC('#7a2a2a'));
+      hAdd(b, new THREE.ConeGeometry(0.3, 0.75, 10), MR(0, 0.3, -0.15, -0.25), robe);
+      hAdd(b, SPH(0.13, 12, 9), MR(0, 0.78, -0.05), skin);
+      hAdd(b, new THREE.ConeGeometry(0.035, 0.14, 6), MR(0, 0.76, 0.14, Math.PI / 2 + 0.3), skin);
+      hAdd(b, new THREE.CylinderGeometry(0.32, 0.32, 0.02, 16), MR(0, 0.88, -0.06, -0.3), hatC);
+      hAdd(b, new THREE.ConeGeometry(0.15, 0.55, 12), MR(0, 1.13, -0.16, -0.55), hatC);
+      hAdd(b, new THREE.CylinderGeometry(0.152, 0.152, 0.05, 12), MR(0, 0.92, -0.07, -0.3), LC('#8a3aa0'), 0.6);
+      for (let i = 0; i < 7; i++) hAdd(b, new THREE.BoxGeometry(0.03, 0.3, 0.02), MR(R(-0.12, 0.12), 0.66, -0.15 - i * 0.012, R(-0.6, -0.2), 0, R(-0.3, 0.3)), hairC);
+      for (const s of [-1, 1]) { hAdd(b, new THREE.CapsuleGeometry(0.045, 0.3, 4, 6), MR(s * 0.13, 0.32, 0.2, 1.3, 0, s * 0.15), robe); hAdd(b, SPH(0.045, 6, 4), MR(s * 0.06, 0.08, 0.38), skin); hAdd(b, SPH(0.018, 5, 4), MR(s * 0.045, 0.8, 0.11), LC('#ffd040'), 1.5); }
+    }), g, 'witch');
+    const cape = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.9, 1, 4).translate(0, -0.45, 0), new THREE.MeshStandardMaterial({ color: LC('#3a1a4a'), side: THREE.DoubleSide, roughness: 0.8 }));
+    cape.position.set(0, 0.62, -0.18); cape.rotation.x = 1.0; g.add(cape); g.scale.setScalar(1.7); g.visible = false; scene.add(g);
+    return { g, cape, on: false, t: 0, dur: 1, a: V(), b: V(), next: 20 };
+  }
+  function makeTroll() {
+    const g = new THREE.Group(), sm = stoneMaterial('#cfcab4', true), moss = LC('#5a7a3a'), eyeC = LC('#ffcc55'), tusk = LC('#e8dcc0');
+    const body = new THREE.Mesh(geoOf(b => {
+      hAdd(b, SPH(1, 18, 14), MR(0, 1.9, 0, 0, 0, 0, 1.55, 1.55, 1.25));
+      hAdd(b, SPH(1, 14, 10), MR(0, 1.4, 0.55, 0, 0, 0, 1.15, 0.95, 0.85));
+      for (const s of [-1, 1]) { hAdd(b, new THREE.CapsuleGeometry(0.45, 1.2, 4, 10), MR(s * 0.95, 0.65, 0.9, Math.PI / 2 - 0.2, 0, s * 0.25)); hAdd(b, SPH(1, 10, 8), MR(s * 1.05, 0.25, 1.75, 0, 0, 0, 0.5, 0.32, 0.75)); }
+      for (let i = 0; i < 9; i++) hAdd(b, SPH(R(0.25, 0.5), 7, 5), MR(R(-1.2, 1.2), R(2.6, 3.3), R(-0.9, 0.3)));
+    }), sm); body.castShadow = true; body.receiveShadow = true; body.userData.kind = 'troll'; g.add(body); FOLK.pick.push(body);
+    cmesh(geoOf(b => { for (let i = 0; i < 26; i++) { const a = rnd() * 6.283, r = R(0.4, 1.3); hAdd(b, new THREE.ConeGeometry(0.05, R(0.25, 0.5), 4), MR(Math.cos(a) * r, 3.3 + R(-0.25, 0.1), Math.sin(a) * r * 0.8 - 0.3, R(-0.4, 0.4), 0, R(-0.4, 0.4)), moss); }
+      hAdd(b, new THREE.CylinderGeometry(0.06, 0.09, 0.9, 6), MR(0.7, 3.55, -0.3, 0, 0, -0.2), LC('#4a3424')); hAdd(b, new THREE.ConeGeometry(0.45, 1.1, 7), MR(0.82, 4.3, -0.3, 0, 0, -0.2), LC('#3e6a34')); }), g, 'troll');
+    const head = pivot(g, 0, 3.35, 0.65);
+    const hm = new THREE.Mesh(geoOf(b => { hAdd(b, SPH(0.8, 16, 12), MR(0, 0.35, 0.15, 0, 0, 0, 1, 0.9, 0.95)); hAdd(b, SPH(0.35, 10, 8), MR(0, 0.25, 0.95, 0, 0, 0, 0.9, 1.1, 1.3)); hAdd(b, SPH(0.7, 10, 6), MR(0, 0.62, 0.45, 0, 0, 0, 1.1, 0.35, 0.6));
+      for (const s of [-1, 1]) hAdd(b, new THREE.ConeGeometry(0.22, 0.6, 6), MR(s * 0.82, 0.45, 0, 0, 0, -s * 1.3)); }), sm); hm.castShadow = true; hm.userData.kind = 'troll'; head.add(hm); FOLK.pick.push(hm);
+    cmesh(geoOf(b => { for (const s of [-1, 1]) { hAdd(b, SPH(0.075, 8, 6), MR(s * 0.28, 0.48, 0.82), eyeC, 1); hAdd(b, new THREE.ConeGeometry(0.06, 0.22, 6), MR(s * 0.25, -0.02, 0.78, 0.3), tusk); } }), head, 'troll');
+    const arm = pivot(g, 1.35, 2.5, 0.2); const am = new THREE.Mesh(geoOf(b => { hAdd(b, new THREE.CapsuleGeometry(0.38, 1.3, 4, 10), MR(0, -0.85, 0.15)); hAdd(b, SPH(0.48, 10, 8), MR(0, -1.85, 0.25)); }), sm); am.castShadow = true; am.userData.kind = 'troll'; arm.add(am); FOLK.pick.push(am);
+    const arm2 = pivot(g, -1.35, 2.5, 0.2); const am2 = am.clone(); arm2.add(am2); FOLK.pick.push(am2);
+    g.visible = false; scene.add(g); return { g, head, arm, arm2, spot: null, wave: -9, thump: -9, look: 0 };
+  }
+  function makeElf() {
+    const g = new THREE.Group(), robe = LC(pick(['#e8eef0', '#d8e8d8', '#e0e4f0', '#c8d8c0'])), skin = LC('#f0dcc8'), hairC = LC(pick(['#f0e8c8', '#e8e0d8', '#d8c090'])), orbC = LC('#a8e8ff');
+    cmesh(geoOf(b => { hAdd(b, new THREE.CylinderGeometry(0.13, 0.36, 1.3, 16, 1, true), MR(0, 0.65, 0), robe); hAdd(b, new THREE.CylinderGeometry(0.11, 0.14, 0.45, 12), MR(0, 1.45, 0), robe); hAdd(b, new THREE.CylinderGeometry(0.15, 0.15, 0.04, 12), MR(0, 1.27, 0), LC('#c8a85a'), 0.3);
+      hAdd(b, SPH(0.105, 14, 10), MR(0, 1.8, 0, 0, 0, 0, 0.9, 1.1, 1), skin); hAdd(b, new THREE.CylinderGeometry(0.035, 0.04, 0.12, 8), MR(0, 1.66, 0), skin);
+      for (const s of [-1, 1]) { hAdd(b, new THREE.ConeGeometry(0.025, 0.18, 5), MR(s * 0.11, 1.84, -0.02, 0, 0, -s * 1.0), skin); hAdd(b, SPH(0.012, 5, 4), MR(s * 0.035, 1.82, 0.09), LC('#3a6a8a')); }
+      hAdd(b, SPH(0.115, 12, 8), MR(0, 1.86, -0.03, 0, 0, 0, 1, 0.8, 1.05), hairC, 0.15); hAdd(b, new THREE.CylinderGeometry(0.1, 0.06, 0.6, 10, 1, true), MR(0, 1.55, -0.06), hairC, 0.15);
+      hAdd(b, new THREE.TorusGeometry(0.105, 0.012, 5, 16), MR(0, 1.9, 0, Math.PI / 2 - 0.15), LC('#e8c860'), 0.4); }), g, 'elf');
+    const arm = pivot(g, 0.16, 1.55, 0); cmesh(geoOf(b => { hAdd(b, new THREE.CapsuleGeometry(0.035, 0.42, 4, 6), MR(0, -0.25, 0), robe); hAdd(b, SPH(0.035, 6, 4), MR(0, -0.5, 0), skin); hAdd(b, SPH(0.08, 10, 8), MR(0, -0.6, 0.02), orbC, 2.2); }), arm, 'elf');
+    const arm2 = pivot(g, -0.16, 1.55, 0); cmesh(geoOf(b => { hAdd(b, new THREE.CapsuleGeometry(0.035, 0.42, 4, 6), MR(0, -0.25, 0), robe); hAdd(b, SPH(0.035, 6, 4), MR(0, -0.5, 0), skin); }), arm2, 'elf');
+    g.scale.setScalar(1.05); g.visible = false; scene.add(g); return { g, arm, arm2, ph: rnd() * 6.28, a: 0, lift: 0 };
+  }
+  function makeRabbit() {
+    const g = new THREE.Group(), fur = LC(pick(['#8a6a4a', '#9a8068', '#6a5a4a', '#b8a088', '#d8d0c4'])), dark = LC('#1a1410');
+    cmesh(geoOf(b => { hAdd(b, SPH(1, 10, 8), MR(0, 0.14, 0, 0, 0, 0, 0.12, 0.12, 0.17), fur); hAdd(b, SPH(0.075, 10, 8), MR(0, 0.25, 0.14), fur); hAdd(b, SPH(0.045, 6, 4), MR(0, 0.16, -0.17), LC('#f0ece4'));
+      for (const s of [-1, 1]) { hAdd(b, SPH(1, 6, 4), MR(s * 0.03, 0.37, 0.11, -0.25, 0, s * 0.18, 0.022, 0.1, 0.012), fur); hAdd(b, SPH(0.012, 5, 4), MR(s * 0.045, 0.27, 0.2), dark); hAdd(b, SPH(1, 6, 4), MR(s * 0.07, 0.05, -0.04, 0, 0, 0, 0.04, 0.04, 0.09), fur); } }), g, 'rabbit');
+    g.visible = false; scene.add(g); return { g, on: false, hop: -9, hopDur: 0.35, from: V(), to: V(), head: 0, next: 0 };
+  }
+  function buildFolk() {
+    FOLK.mat = charMaterial();
+    for (let i = 0; i < 14; i++) FOLK.hob.push(makeHobbit());
+    FOLK.fire = makeCampfire(); FOLK.witch = makeWitch(); FOLK.troll = makeTroll();
+    for (let i = 0; i < 4; i++) FOLK.elves.push(makeElf());
+    for (let i = 0; i < 8; i++) FOLK.rabbits.push(makeRabbit());
+  }
+  function trollSpot(D) {
+    for (let t = 0; t < 10; t++) { const dd = D + R(-60, 60), side = rnd() < 0.5 ? -1 : 1, x = trailX(dd) + side * R(9, 22), z = -dd, h = heightAt(x, z);
+      if (h < SC.water + 0.8 || nearVillage(x, z) || slopeAt(x, z, h) > 0.35) continue; FOLK.trollSpots.push({ x, z, y: h, d: dd, yaw: Math.atan2(trailX(dd) - x, 0) }); return; }
+  }
+  const beatPhase = () => W.beatPer > 0.2 ? clamp(1 - (W.nextBeat - W.t) / W.beatPer, 0, 1) : (W.t * 0.8) % 1;
+  function poseHobbit(F, dt) {
+    const o = F.root, L = F.legs, A = F.arms; let bob = 0;
+    if (F.mode === 'walk') { F.ph += dt * F.speed * 5.2; const s = Math.sin(F.ph); L[0].rotation.x = s * 0.6; L[1].rotation.x = -s * 0.6; A[0].rotation.set(-s * 0.5, 0, 0.08); A[1].rotation.set(F.lit ? -0.5 : s * 0.5, 0, -0.08); bob = Math.abs(Math.cos(F.ph)) * 0.035; }
+    else if (F.mode === 'dance') { const bp = beatPhase(), e = 0.4 + FOLK.energy * 0.8, hop = Math.pow(Math.sin(bp * Math.PI), 2) * 0.13 * e, k = Math.floor(W.t / Math.max(0.3, W.beatPer || 0.6)) % 2;
+      L[0].rotation.x = k ? -0.5 * e * Math.sin(bp * Math.PI) : 0.1; L[1].rotation.x = k ? 0.1 : -0.5 * e * Math.sin(bp * Math.PI);
+      const wave = Math.sin(W.t * 6 + F.ph) * 0.3; A[0].rotation.set(0, 0, -2.5 - wave * e); A[1].rotation.set(0, 0, 2.5 + wave * e); bob = hop; }
+    else if (F.mode === 'sit') { L[0].rotation.x = L[1].rotation.x = -1.45; A[0].rotation.set(-0.5, 0, 0.1); A[1].rotation.set(-0.5 + Math.sin(W.t * 1.3 + F.ph) * 0.15, 0, -0.1); bob = -0.3; }
+    else { const s = Math.sin(W.t * 1.4 + F.ph); L[0].rotation.x = L[1].rotation.x = 0; A[0].rotation.set(0, 0, 0.12 + s * 0.05); A[1].rotation.set(F.lit ? -0.5 : 0, 0, -0.12 - s * 0.05); bob = 0; }
+    const jt = W.t - F.jump; if (jt < 0.7) { bob += Math.sin(jt / 0.7 * Math.PI) * 0.6; A[0].rotation.set(0, 0, -2.8); A[1].rotation.set(0, 0, 2.8); }
+    F.body.position.y = bob; for (const p of [...L, ...A]) p.position.y = (p === L[0] || p === L[1] ? 0.44 : 0.82) + bob;
+  }
+  function updateFolk(dt) {
+    if (!FOLK.mat) return; FOLK.t -= dt; const night = curTod === 'night' || curTod === 'dusk', cx = cam.position.x, cz = cam.position.z;
+    FOLK.glow.value = curTod === 'night' ? 1 : curTod === 'dusk' ? 0.7 : curTod === 'golden' ? 0.2 : 0;
+    FOLK.energy += ((W.beatPer > 0.2 ? clamp(W.level * 1.4, 0.2, 1) : 0) - FOLK.energy) * Math.min(1, dt * 0.5);
+    if (FOLK.t < 0) { FOLK.t = 1;
+      // village folk: pick the nearest village and gather round its fire
+      let best = null, bd = 380; for (const v of villages) { const d = Math.hypot(v.x - cx, v.z - cz); if (d < bd) { bd = d; best = v; } }
+      if (best !== FOLK.vill) { FOLK.vill = best; const Fi = FOLK.fire;
+        if (best) { const fx = best.fx, fz = best.fz;
+          Fi.x = fx; Fi.z = fz; Fi.y = heightAt(fx, fz); Fi.g.position.set(fx, Fi.y - 0.05, fz); Fi.g.visible = true;
+          FOLK.hob.forEach((F, i) => { F.root.visible = true; F.dancer = i < 7; F.a = i / 7 * 6.283; F.d = best.d + R(-70, 70); F.dir = rnd() < 0.5 ? 1 : -1; F.lane = R(-0.7, 0.7); F.sitA = i / 7 * 6.283; });
+        } else { Fi.g.visible = false; for (const F of FOLK.hob) F.root.visible = false; } }
+      // the troll: nearest spot within reach
+      const ts = FOLK.trollSpots.filter(s => s.d > W.d - 400); FOLK.trollSpots = ts; let tb = null, td = 360; for (const s of ts) { const d = Math.hypot(s.x - cx, s.z - cz); if (d < td) { td = d; tb = s; } }
+      const T = FOLK.troll; if (tb !== T.spot) { T.spot = tb; T.g.visible = !!tb; if (tb) { T.g.position.set(tb.x, tb.y - 0.3, tb.z); T.g.rotation.y = tb.yaw; T.g.scale.setScalar(1.15); } }
+      // elves keep watch at the nearest great tree
+      let gb = null, gd = 340; for (const it of props.items) if (it.v === 5) { const d = Math.hypot(it.x - cx, it.z - cz); if (d < gd) { gd = d; gb = it; } }
+      if (gb !== FOLK.tree) { FOLK.tree = gb; FOLK.elves.forEach((E, i) => { E.g.visible = !!gb; if (!gb) return; const a = i / FOLK.elves.length * 6.283 + 0.4, r = 4.5 * gb.s * 0.55 + 2.5, x = gb.x + Math.cos(a) * r, z = gb.z + Math.sin(a) * r; E.g.position.set(x, heightAt(x, z), z); E.g.rotation.y = Math.atan2(x - gb.x, z - gb.z); E.a = a; }); }
+    }
+    const Fi = FOLK.fire, vill = FOLK.vill;
+    if (vill) {
+      const dancing = W.beatPer > 0.2 && FOLK.energy > 0.15;
+      Fi.flare *= Math.exp(-dt * 1.5); const amt = (night ? 1 : 0.75) * (0.9 + W.kick * 0.35 + Fi.flare * 0.8 + Math.sin(W.t * 13) * 0.04 + Math.sin(W.t * 7.3) * 0.05);
+      Fi.fm.uniforms.amt.value = amt; Fi.light.intensity = (night ? 45 : curTod === 'golden' ? 12 : 3) * amt; Fi.g.scale.setScalar(1 + Fi.flare * 0.35);
+      Fi.emb -= dt * (night ? 6 : 3) * (1 + Fi.flare * 4); while (Fi.emb < 0) { Fi.emb += 1; ORB.sparks.emit(Fi.x + R(-0.3, 0.3), Fi.y + 0.9, Fi.z + R(-0.3, 0.3), R(-0.3, 0.3), R(1.2, 2.6), R(-0.3, 0.3), R(1.2, 2.4), R(0.03, 0.06), tc.setRGB(2.4, 0.9, 0.25)); }
+      FOLK.hob.forEach((F, i) => { const o = F.root; F.lit = night && !F.dancer; F.lantern.visible = F.lit;
+        if (F.dancer) { const ring = dancing ? 2.3 : 3.2; if (dancing) F.a += dt * (0.35 + FOLK.energy * 0.25); const a = dancing ? F.a : F.sitA;
+          const x = Fi.x + Math.cos(a) * ring, z = Fi.z + Math.sin(a) * ring; o.position.set(x, heightAt(x, z), z);
+          o.rotation.y = dancing ? Math.atan2(-Math.sin(a), Math.cos(a)) + Math.sin(W.t * 2 + i) * 0.5 : Math.atan2(Fi.x - x, Fi.z - z); F.mode = dancing ? 'dance' : (i % 3 === 0 ? 'idle' : 'sit'); if (F.mode === 'sit') o.position.y += 0.05; }
+        else { F.d += F.dir * F.speed * dt * 0.75; if (Math.abs(F.d - vill.d) > 90) { F.dir = -Math.sign(F.d - vill.d); } const x = trailX(F.d) + F.lane, z = -F.d;
+          o.position.set(x, heightAt(x, z), z); const nx = trailX(F.d + F.dir) + F.lane - x; o.rotation.y = Math.atan2(nx, -F.dir); F.mode = 'walk'; }
+        const dx = o.position.x - cx, dz = o.position.z - cz; o.visible = dx * dx + dz * dz < 300 * 300; if (o.visible) poseHobbit(F, dt); });
+    }
+    // troll: breathes, watches you, drums his belly on big moments
+    const T = FOLK.troll; if (T.spot) { const br = Math.sin(W.t * 0.8); T.g.children[0].scale.set(1 + br * 0.012, 1 + br * 0.018, 1 + br * 0.012);
+      const ax = AV.pos.x - T.g.position.x, az = AV.pos.z - T.g.position.z, ad = Math.hypot(ax, az); const want = ad < 70 ? clamp(Math.atan2(ax, az) - T.g.rotation.y, -0.9, 0.9) : Math.sin(W.t * 0.15) * 0.3;
+      T.look += (((want + Math.PI) % (2 * Math.PI) - Math.PI) - T.look) * Math.min(1, dt * 1.5); T.head.rotation.y = T.look; T.head.rotation.x = ad < 70 ? -0.15 : 0.05;
+      const wt = W.t - T.wave, tt = W.t - T.thump; T.arm.rotation.set(0, 0, wt < 3 ? -(2.2 + Math.sin(wt * 9) * 0.35) * Math.sin(Math.min(1, wt / 0.5) * Math.PI / 2) * (wt > 2.5 ? (3 - wt) * 2 : 1) : tt < 1.2 ? -Math.sin(tt / 1.2 * Math.PI) * 1.1 : 0.05 * Math.sin(W.t + 1));
+      T.arm2.rotation.set(0, 0, tt < 1.2 ? Math.sin(tt / 1.2 * Math.PI) * 1.1 : -0.05); }
+    // elves: sway, raise their light on chords
+    if (FOLK.tree) for (const E of FOLK.elves) { E.lift *= Math.exp(-dt * 0.8); E.g.rotation.z = Math.sin(W.t * 0.7 + E.ph) * 0.03; E.arm.rotation.set(-0.3 - E.lift * 2.2 - Math.sin(W.t * 0.9 + E.ph) * 0.1, 0, 0.15); E.arm2.rotation.set(Math.sin(W.t * 0.6 + E.ph) * 0.1, 0, -0.12); }
+    updateWitch(dt, night); updateRabbits(dt);
+  }
+  function updateWitch(dt, night) {
+    const Wi = FOLK.witch;
+    if (!Wi.on) { Wi.next -= dt; if (Wi.next > 0 || !(night || (curTod === 'golden' && rnd() < 0.3))) { if (Wi.next < 0) Wi.next = R(20, 40); return; }
+      cam.getWorldDirection(tv); const fl = Math.hypot(tv.x, tv.z) || 1, fx = tv.x / fl, fz = tv.z / fl, rx = -fz, rz = fx, side = rnd() < 0.5 ? -1 : 1, ahead = R(70, 140), up = R(18, 45);
+      Wi.a.set(cam.position.x + fx * ahead - rx * 230 * side, 0, cam.position.z + fz * ahead - rz * 230 * side); Wi.b.set(cam.position.x + fx * (ahead + R(-30, 60)) + rx * 230 * side, 0, cam.position.z + fz * (ahead + R(-30, 60)) + rz * 230 * side);
+      Wi.a.y = groundAt(Wi.a.x, Wi.a.z) + up; Wi.b.y = groundAt(Wi.b.x, Wi.b.z) + up + R(-10, 10); Wi.t = 0; Wi.dur = Wi.a.distanceTo(Wi.b) / R(15, 20); Wi.on = true; Wi.g.visible = true; Wi.next = R(35, 70); }
+    Wi.t += dt; const u = Wi.t / Wi.dur; if (u > 1) { Wi.on = false; Wi.g.visible = false; return; }
+    const p = tv.copy(Wi.a).lerp(Wi.b, u); p.y += Math.sin(u * Math.PI) * 12 + Math.sin(W.t * 1.7) * 1.2 + Math.sin(u * 20) * 0.8; p.y = Math.max(p.y, groundAt(p.x, p.z) + 8);
+    Wi.g.position.copy(p); Wi.g.rotation.set(Math.sin(W.t * 1.7) * 0.08, Math.atan2(Wi.b.x - Wi.a.x, Wi.b.z - Wi.a.z), Math.sin(W.t * 0.9) * 0.15, 'YXZ'); Wi.cape.rotation.x = 1.15 + Math.sin(W.t * 11) * 0.18;
+    if (rnd() < dt * 30) { const bk = tv2.set(0, 0, -2.4).applyQuaternion(Wi.g.quaternion).add(p); ORB.sparks.emit(bk.x, bk.y, bk.z, R(-0.3, 0.3), R(-0.6, 0.2), R(-0.3, 0.3), R(0.8, 1.6), R(0.04, 0.08), tc.setHSL(0.75 + R(-0.12, 0.2), 0.9, 0.6).multiplyScalar(night ? 2.2 : 1.2)); }
+  }
+  function updateRabbits(dt) {
+    const cx = cam.position.x, cz = cam.position.z; cam.getWorldDirection(tv3); const fl = Math.hypot(tv3.x, tv3.z) || 1, ux = tv3.x / fl, uz = tv3.z / fl, onBeat = W.beatPer > 0.2;
+    for (const Rb of FOLK.rabbits) { const o = Rb.g;
+      if (!Rb.on) { if (curTod === 'night' || rnd() > dt * 0.5) continue; const dist = R(14, 60), lat = R(-30, 30), x = cx + ux * dist - uz * lat, z = cz + uz * dist + ux * lat, h = okGround(x, z); if (h == null || meadowAt(x, z) < 0.15) continue;
+        Rb.on = true; o.visible = true; o.position.set(x, h, z); Rb.head = rnd() * 6.28; Rb.next = W.t + R(0.3, 2); Rb.hop = -9; o.scale.setScalar(R(1.3, 1.7)); continue; }
+      const dx = o.position.x - cx, dz = o.position.z - cz; if (dx * dx + dz * dz > 110 * 110 || curTod === 'night') { Rb.on = false; o.visible = false; continue; }
+      const ht = W.t - Rb.hop;
+      if (ht >= Rb.hopDur && W.t > Rb.next) { const scared = Math.hypot(o.position.x - AV.pos.x, o.position.z - AV.pos.z) < 10; if (scared) Rb.head = Math.atan2(o.position.x - AV.pos.x, o.position.z - AV.pos.z) + R(-0.4, 0.4); else Rb.head += R(-0.9, 0.9);
+        const len = scared ? R(1.4, 2.2) : R(0.4, 0.9), tx = o.position.x + Math.sin(Rb.head) * len, tz = o.position.z + Math.cos(Rb.head) * len; if (okGround(tx, tz) == null) { Rb.head += 2; Rb.next = W.t + 0.2; continue; }
+        Rb.from.copy(o.position); Rb.to.set(tx, heightAt(tx, tz), tz); Rb.hopDur = scared ? 0.28 : 0.36; Rb.hop = W.t; o.rotation.y = Rb.head;
+        Rb.next = onBeat && !scared ? W.nextBeat + (rnd() < 0.5 ? 0 : W.beatPer) - Rb.hopDur * 0.5 : W.t + (scared ? 0.05 : R(0.4, 2.5)); }
+      if (ht < Rb.hopDur) { const u = ht / Rb.hopDur; o.position.lerpVectors(Rb.from, Rb.to, u); o.position.y += Math.sin(u * Math.PI) * 0.35; o.rotation.x = -Math.cos(u * Math.PI) * 0.35; } else o.rotation.x = 0;
     }
   }
 
@@ -1262,7 +1466,7 @@ const World = (() => {
   function gustAt(P, amp) { const g = U.gust.value[W.gustI]; W.gustI = (W.gustI + 1) % 4; g.set(P.x, P.z, W.t, amp); }
   function interact(cx, cy) {
     const rc = canvas.getBoundingClientRect(); ndc.set(((cx - rc.left) / rc.width) * 2 - 1, -((cy - rc.top) / rc.height) * 2 + 1); ray.setFromCamera(ndc, cam); ray.far = 900;
-    const objs = []; for (const t of tiles.values()) if (t.mesh.visible) objs.push(t.mesh); if (water.visible) objs.push(water);
+    const objs = []; for (const t of tiles.values()) if (t.mesh.visible) objs.push(t.mesh); for (const m of FOLK.pick) { let v = true; for (let o = m; o; o = o.parent) if (!o.visible) { v = false; break; } if (v) objs.push(m); } if (water.visible) objs.push(water);
     for (const set of [trees, rocks, props]) for (const v of set.variants) for (const b of [v.near, v.far]) if (b) for (const mm of b.meshes) if (mm.count) objs.push(mm);
     const hits = ray.intersectObjects(objs, false); if (!hits.length) return;
     const h = hits[0], P = h.point.clone(); let kind = h.object.userData.kind || 'ground'; if (kind === 'ground' && P.y < SC.water + 0.05) kind = 'water';
@@ -1272,6 +1476,12 @@ const World = (() => {
     const lv = 0.7 + W.level * 0.6, gap = W.beatPer > 0.2 ? W.beatPer / 2 : 0.28;
     if (kind === 'water') { for (let i = 0; i < 3; i++) FXQ.push({ t: W.t + i * gap, fn: () => ripple(P, 1 + i * 0.35) }); burst(V(P.x, SC.water + 0.1, P.z), 14, tc.setRGB(1.2, 1.3, 1.4), 2.2, 0.9, 0.9); }
     else if (kind === 'tree') { gustAt(P, 1.0 * lv); burst(P, 34, tc.setRGB(1.1, 1.25, 0.35), 0.4, 1.4, 2.6); if (rnd() < 0.65) flock(P); }
+    else if (kind === 'folk') { for (const F of FOLK.hob) if (F.root.visible && F.root.position.distanceTo(P) < 12) F.jump = W.t + R(0, 0.25); burst(P, 16, tc.setRGB(1.6, 1.3, 0.6), 1.8, 0.8, 1.2); }
+    else if (kind === 'fire') { FOLK.fire.flare = 1.5; for (const F of FOLK.hob) if (F.dancer) F.jump = W.t + R(0, 0.3); }
+    else if (kind === 'troll') { FOLK.troll.wave = W.t; gustAt(P, 1.2); burst(P, 20, tc.setRGB(1.2, 1.1, 0.9), 1.0, 1.2, 1.6); }
+    else if (kind === 'witch') { burst(P, 40, tc.setRGB(1.6, 0.8, 2.2), 2, 2, 2); }
+    else if (kind === 'elf') { for (const E of FOLK.elves) E.lift = 1.4; burst(P, 24, tc.setRGB(1.0, 1.6, 2.2), 1.5, 0.8, 2.2); }
+    else if (kind === 'rabbit') { burst(P, 10, tc.setRGB(1.4, 1.4, 1.2), 1.2, 0.6, 1.0); }
     else if (kind === 'house') { releaseLanterns(3, P.x, P.z, 3); WIN.pulse = 4; burst(P, 18, tc.setRGB(1.8, 1.1, 0.5), 1.6, 0.8, 1.6); }
     else if (kind === 'menhir') { const C0 = CIRC.near[0]; if (C0) { let k = 0, bd = 1e9; C0.stones.forEach((st, i) => { const d = Math.hypot(st.x - P.x, st.z - P.z); if (d < bd) { bd = d; k = i; } }); circleNote({ p: (k + 0.5) / 12, v: 1 }); } }
     else if (kind === 'ruin') { CLICK.pos.value.copy(P); CLICK.age.value = 0; burst(P, 26, tc.setRGB(0.6, 1.6, 2.0), 2.4, 1.0, 2.2); }
@@ -1381,10 +1591,10 @@ const World = (() => {
   function updateToys(dt) { ntTick(); updateCircles(dt); updateSkyLanterns(dt); updateShrooms(dt); if (TOY.fish) updateFish(); updateLamps(dt); if (WIN.base == null) WIN.base = WIN.value; WIN.pulse = (WIN.pulse || 0) * Math.exp(-dt * 1.2); WIN.value = WIN.base * (1 + W.kick * 0.5) + WIN.pulse; }
 
   // ---------------- music hooks ----------------
-  function onNote(pitch, vel = 0.8) { W.flare = Math.min(1.6, W.flare + 0.5 * vel); }
+  function onNote(pitch, vel = 0.8) { W.flare = Math.min(1.6, W.flare + 0.5 * vel); if (FOLK.witch && FOLK.witch.on) { const p = FOLK.witch.g.position; burst(p, 6, hueOf(pitch).multiplyScalar(2), 0.6, 0.8, 1.4); } }
   function onBass(v = 0.7) { const g = U.gust.value[W.gustI]; W.gustI = (W.gustI + 1) % 4; cam.getWorldDirection(tv); g.set(cam.position.x + tv.x * R(6, 30) + R(-10, 10), cam.position.z + tv.z * R(6, 30) + R(-10, 10), W.t, (W.calm ? 0.25 : 0.45) * v); }
-  function onChord(c) { W.chords++; W.chordFlash = 1; CIRC.chord.copy(chordColor(c)); CIRC.chordA = 1; lanternsOnChord(false); if (TOY.flowers && W.t - BL.lastWave > 1.1) { const p = waveOrigin(); bloomWave(p.x, p.z, chordColor(c), 1); } if (W.chords % 8 === 0) flock(); }
-  function onBig() { if (rnd() < 0.6) flock(); lanternsOnChord(true); if (TOY.flowers && W.t - BL.lastWave > 0.6) { const p = waveOrigin(); bloomWave(p.x, p.z, C(BLOOM_PAL[Math.floor(Math.random() * 12)]), 1.4); } }
+  function onChord(c) { W.chords++; W.chordFlash = 1; CIRC.chord.copy(chordColor(c)); CIRC.chordA = 1; lanternsOnChord(false); for (const E of FOLK.elves) E.lift = 1; if (TOY.flowers && W.t - BL.lastWave > 1.1) { const p = waveOrigin(); bloomWave(p.x, p.z, chordColor(c), 1); } if (W.chords % 8 === 0) flock(); }
+  function onBig() { if (rnd() < 0.6) flock(); lanternsOnChord(true); if (FOLK.fire) FOLK.fire.flare = 1; if (FOLK.troll) FOLK.troll.thump = W.t; if (TOY.flowers && W.t - BL.lastWave > 0.6) { const p = waveOrigin(); bloomWave(p.x, p.z, C(BLOOM_PAL[Math.floor(Math.random() * 12)]), 1.4); } }
 
   // ---------------- per frame ----------------
   function step(dt, M) {
@@ -1399,7 +1609,7 @@ const World = (() => {
     W.level += (M.level - W.level) * Math.min(1, dt * 0.6); W.levelSlow += (M.level - W.levelSlow) * Math.min(1, dt * 0.05);
     W.hit *= Math.exp(-dt * 5); W.kick *= Math.exp(-dt * 6); W.flare *= Math.exp(-dt * 3); W.chordFlash *= Math.exp(-dt * 1.2); W.swell *= Math.exp(-dt * 0.7);
     U.windAmp.value = (M.calm ? 0.12 : 0.18) + W.level * (M.calm ? 0.2 : 0.45); U.cloudSpeed.value = 0.01 + W.level * 0.015;
-    moodTickCam(dt); flight(dt); followCam(dt); updateToys(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
+    moodTickCam(dt); flight(dt); followCam(dt); updateToys(dt); updateOrb(dt); updateInteract(dt); updateCreatures(dt); updateFolk(dt); updateSmoke(dt); if (SMOKE.mat) SMOKE.mat.uniforms.scale.value = (innerHeight * pr) / (2 * Math.tan(cam.fov * Math.PI / 360));
     updateTiles(cam.position.x, cam.position.z, 6); updateGrass(cam.position.x, cam.position.z, W.t < 0.3 ? null : 4); updateBloom(dt);
     pumpContent(false);
     if (frames % 3 === 0 || W.t < 0.3) { cam.updateMatrixWorld(); pmat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); frustum.setFromProjectionMatrix(pmat); cullSet(trees, NEAR_TREE, 1700); cullSet(rocks, 600, 600); cullSet(props, 3000, 3000); if (frames % 30 === 0) gatherChimneys(); }
@@ -1512,7 +1722,7 @@ const World = (() => {
     _villages() { return villages.map(v => ({ x: v.x, z: v.z, d: v.d })); },
     _goto(x, y, z, yaw) { AV.pos.set(x, y, z); AV.yaw = yaw; AV.pitch = 0; W.d = -z; AV.camInit = false; AV.lastInput = W.t; pumpContent(true); updateTiles(x, z, null, true); updateGrass(x, z, null, true); },
     _toys() { return { kind: NT.kind, now: +NT.now.toFixed(2), fish: FISH.filter(f => f.on).length, stones: ORB.land.length, spots: WATERSPOTS.length, lamps: lampSeq.length }; },
-    _dbg() { return { CIRC, SKYL, SHR, circleNote, releaseLanterns, lanternSource, villages, composer, heightAt, BL, AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
+    _dbg() { return { FOLK, CIRC, SKYL, SHR, circleNote, releaseLanterns, lanternSource, villages, composer, heightAt, BL, AV, GL, W, CAM, cam, U, ORB, trees, rocks, props, tiles, gchunks, HORSE, Rr, scene }; },
     _shot(k) { const m = { low: 0.02, mid: 0.45, high: 0.98 }[k]; if (m != null) { GL.mood = m; W.levelSlow = 0.4; glideReset(); } },
     _ff(n, dt, f) { W.noRender = true; W.ffing = true; W.freeze = true; for (let i = 0; i < n; i++) frameLive(dt, Object.assign({ level: 0.5, pitch: 0.5, active: true, tempoConf: 0.9, barDur: 2, downbeatIn: 2 - ((W.t % 2) + 2) % 2 }, f || {}, { onsets: i % 7 === 0 ? [Math.random()] : [], kickHit: i % 15 === 0 ? 1 : 0 }), {}); W.noRender = false; composer.render(); W.ffing = false; } };
 })();
