@@ -1573,10 +1573,30 @@ const World = (() => {
     AV.mx = new THREE.AnimationMixer(b); AV.mx.clipAction(A.stork.animations[0]).play(); AV.bird = b; scene.add(b);
     const sp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 16), new THREE.MeshBasicMaterial({ color: C(5, 4.2, 2.8), fog: false }));
     sp.add(new THREE.PointLight(0xffd9a0, 18, 24, 2)); AV.spirit = sp; scene.add(sp);
+    AV.walker = makeHobbit(); AV.walker.root.scale.setScalar(1.35); AV.walker.body.userData.kind = 'me';
     setAvatar(AV.kind);
   }
-  function setAvatar(k) { AV.kind = k; if (AV.bird) { AV.bird.visible = k === 'bird'; AV.spirit.visible = k === 'spirit'; } AV.camInit = false; }
+  function setAvatar(k) { const was = AV.kind; AV.kind = k; if (AV.bird) { AV.bird.visible = k === 'bird'; AV.spirit.visible = k === 'spirit'; AV.walker.root.visible = k === 'walk'; } if ((was === 'walk') !== (k === 'walk')) AV.inited = false; AV.camInit = false; }
+  // on foot: a little adventurer that strolls the trail by itself, or goes wherever you steer
+  function walkStep(dt) {
+    const p = AV.pos, F = AV.walker;
+    if (!AV.inited) { const d = W.d; p.set(trailX(d), 0, -d); p.y = heightAt(p.x, p.z); AV.yaw = Math.atan2(trailX(d + 5) - trailX(d), 5); AV.speed = 0; AV.inited = true; }
+    let iy = 0, ip = 0; if (KEYS.a || KEYS.arrowleft) iy -= 1; if (KEYS.d || KEYS.arrowright) iy += 1; if (KEYS.w || KEYS.arrowup) ip += 1; if (KEYS.s || KEYS.arrowdown) ip -= 1;
+    iy += AV.steer.yaw; ip += AV.steer.pitch; const run = KEYS.shift ? 1 : 0; if (iy || ip || run) AV.lastInput = W.t;
+    const idle = W.t - AV.lastInput, ctlT = idle < 6 ? 1 : 0; AV.ctl += (ctlT - AV.ctl) * Math.min(1, dt * (ctlT ? 5 : 0.5));
+    const dB = -p.z, tx = trailX(dB + 7) - p.x, tz = -(dB + 7) - p.z, aYaw = clamp(wrapA(Math.atan2(tx, -tz) - AV.yaw) * 1.4, -0.9, 0.9);
+    AV.yaw = wrapA(AV.yaw + mix(aYaw, iy * 1.9, AV.ctl) * dt);
+    const sT = AV.ctl > 0.5 ? ip * (run ? 5.5 : 2.3) : 1.6; AV.speed += (sT - AV.speed) * Math.min(1, dt * 4);
+    const fx = Math.sin(AV.yaw), fz = -Math.cos(AV.yaw), nx = p.x + fx * AV.speed * dt, nz = p.z + fz * AV.speed * dt, nh = heightAt(nx, nz);
+    const blocked = nh < SC.water - 0.7 || houses.some(q => (q.x - nx) * (q.x - nx) + (q.z - nz) * (q.z - nz) < q.r2 * 0.7) || slopeAt(nx, nz, nh) > 1.1;
+    if (!blocked) { p.x = nx; p.z = nz; } else AV.speed *= 0.5; p.y = Math.max(heightAt(p.x, p.z), SC.water - 0.7);
+    AV.f.set(fx, 0, fz); W.speed = Math.abs(AV.speed); W.d = Math.max(W.d, -p.z); AV.pitch = 0; AV.roll = 0;
+    const o = F.root; o.position.copy(p); o.rotation.y = Math.atan2(fx, fz); F.lit = curTod === 'night' || curTod === 'dusk'; F.lantern.visible = F.lit;
+    const still = Math.abs(AV.speed) < 0.15; F.stillT = still ? (F.stillT || 0) + dt : 0;
+    F.mode = !still ? 'walk' : F.stillT > 2.5 && W.beatPer > 0.2 ? 'dance' : 'idle'; F.speed = Math.max(0.6, Math.abs(AV.speed) / (run ? 1.6 : 1.25)); poseHobbit(F, dt);
+  }
   function flight(dt) {
+    if (AV.kind === 'walk') return walkStep(dt);
     const p = AV.pos;
     if (!AV.inited) { const d = W.d; onPath(d, latAt(d), p); AV.yaw = pathYaw(d); AV.pitch = 0; p.y = lineY(p.x, p.z, Math.sin(AV.yaw), -Math.cos(AV.yaw)); AV.inited = true; }
     let iy = 0, ip = 0; if (KEYS.a || KEYS.arrowleft) iy -= 1; if (KEYS.d || KEYS.arrowright) iy += 1; if (KEYS.w || KEYS.arrowup) ip += 1; if (KEYS.s || KEYS.arrowdown) ip -= 1;
@@ -1608,6 +1628,8 @@ const World = (() => {
   function followCam(dt) {
     const p = AV.pos, f = AV.f, m = GL.mood, t = W.t; let tgt = tv2, lk = tv3;
     if (AV.kind === 'none') { tgt.copy(p); lk.copy(p).addScaledVector(f, 35); lk.y -= 2; }
+    else if (AV.kind === 'walk') { const autoAng = Math.sin(t * 0.03) * 0.6, ang = mix(autoAng, 0, AV.ctl) + AV.orbYaw, elev = clamp(0.28 + AV.orbPitch, -0.1, 1.2), dist = AV.camDist * 0.85, by = AV.yaw + Math.PI + ang;
+      tgt.set(p.x + Math.sin(by) * Math.cos(elev) * dist, p.y + 1.3 + Math.sin(elev) * dist, p.z - Math.cos(by) * Math.cos(elev) * dist); lk.copy(p).addScaledVector(f, 3); lk.y += 1.3; }
     else {
       const autoAng = Math.sin(t * 0.021) * 0.95 + Math.sin(t * 0.0067 + 1) * 0.45;
       const ang = mix(autoAng, 0, AV.ctl) + AV.orbYaw, elev = clamp(mix(0.1 + 0.22 * m + 0.08 * Math.sin(t * 0.017), 0.16, AV.ctl) + AV.orbPitch, -0.3, 1.2);
@@ -1620,7 +1642,7 @@ const World = (() => {
     AV.camP.lerp(tgt, 1 - Math.exp(-dt * (AV.kind === 'none' ? 8 : 4))); AV.camL.lerp(lk, 1 - Math.exp(-dt * 5));
     cam.position.copy(AV.camP); cam.lookAt(AV.camL); if (AV.kind === 'none') cam.rotateZ(AV.roll * 0.4);
     if (!AV.drag && W.t - AV.lastInput > 1.5) { AV.orbYaw *= Math.exp(-dt * 0.5); AV.orbPitch *= Math.exp(-dt * 0.5); }
-    const fov = mix(48, 56, m); GL.fov += (fov - GL.fov) * Math.min(1, dt * 0.3); if (Math.abs(cam.fov - GL.fov) > 0.01) { cam.fov = GL.fov; cam.updateProjectionMatrix(); }
+    const fov = AV.kind === 'walk' ? 55 : mix(48, 56, m); GL.fov += (fov - GL.fov) * Math.min(1, dt * 0.3); if (Math.abs(cam.fov - GL.fov) > 0.01) { cam.fov = GL.fov; cam.updateProjectionMatrix(); }
   }
   // ---- touch the world: things react, and with a beat locked they land on the next beat ----
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), FXQ = [], RIP = []; let ripI = 0, hintEl = null;
@@ -1677,7 +1699,7 @@ const World = (() => {
     canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', () => { AV.drag = null; AV.steer.yaw = AV.steer.pitch = 0; });
     canvas.addEventListener('wheel', e => { e.preventDefault(); AV.camDist = clamp(AV.camDist * Math.exp(e.deltaY * 0.001), 4, 40); AV.lastInput = W.t; }, { passive: false });
     let seen = 0; try { seen = +(localStorage.getItem('vg.flyhint') || 0); } catch (e) {}
-    if (seen < 3) { hintEl = document.createElement('div'); hintEl.textContent = 'Drag to look  ·  WASD or arrows to fly, Shift to soar  ·  Click the world';
+    if (seen < 3) { hintEl = document.createElement('div'); hintEl.textContent = 'Drag to look  ·  WASD or arrows to move, Shift to go faster  ·  Click the world';
       hintEl.style.cssText = 'position:fixed;left:50%;bottom:110px;transform:translateX(-50%);font:500 13px/1.4 "Instrument Sans",system-ui,sans-serif;color:#f3e8d6;background:rgba(13,8,16,.55);border:1px solid rgba(241,228,207,.18);padding:9px 16px;border-radius:999px;pointer-events:none;transition:opacity 1.2s;z-index:5;white-space:nowrap;max-width:calc(100vw - 32px);overflow:hidden;text-overflow:ellipsis';
       document.body.appendChild(hintEl); setTimeout(hideHint, 14000); }
   }
