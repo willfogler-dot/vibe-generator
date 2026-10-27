@@ -1780,11 +1780,14 @@ const World = (() => {
   const TOY = { fish: true, stones: true, lanterns: true, flowers: true, circle: true };
   const firstAt = (ev, t) => { let lo = 0, hi = ev.length; while (lo < hi) { const m = (lo + hi) >> 1; if (ev[m].t < t) lo = m + 1; else hi = m; } return lo; };
   const toys = [];
-  function ntSet(ev, unit, clock, kind) { NT.ev = ev || []; NT.unit = unit || 1; NT.clock = clock || null; NT.kind = ev ? kind : 'none'; NT.now = clock ? (clock() ?? 0) : NT.now; NT.last = NT.now; for (const t of toys) t.idx = firstAt(NT.ev, NT.now); clearStones(); }
+  function ntSet(ev, unit, clock, kind) { NT.chords = ev && ev.chords && ev.chords.length ? ev.chords : null; NT.ci = 0; NT.ev = ev || []; NT.unit = unit || 1; NT.clock = clock || null; NT.kind = ev ? kind : 'none'; NT.now = clock ? (clock() ?? 0) : NT.now; NT.last = NT.now; for (const t of toys) t.idx = firstAt(NT.ev, NT.now); clearStones(); }
   function clearStones() { if (!ORB.stones) return; ORB.land.forEach(L => { ORB.stones.setMatrixAt(L.k, ZERO); ORB.free.push(L.k); }); ORB.land = []; ORB.from = null; }
   function ntTick() {
     if (NT.clock) { const v = NT.clock(); if (v != null) NT.now = v; }
     if (NT.now < NT.last - 0.3 / NT.unit || NT.now > NT.last + 4 / NT.unit) { for (const t of toys) t.idx = firstAt(NT.ev, NT.now); clearStones(); }
+    // scanned files know their chord changes: fire the bloom wave exactly on them
+    if (NT.chords) { const C_ = NT.chords; if (NT.ci > 0 && C_[NT.ci - 1].t > NT.now + 0.05) NT.ci = firstAt(C_, NT.now); if (Math.abs(NT.now - NT.last) > 2) NT.ci = firstAt(C_, NT.now - 0.05);
+      while (NT.ci < C_.length && C_[NT.ci].t <= NT.now) { const c = C_[NT.ci++]; if (NT.now - c.t < 0.5) onChord(c); } }
     NT.last = NT.now;
     if (NT.hold) return;
     for (const toy of toys) { if (!TOY[toy.key]) continue; const ev = NT.ev; if (toy.idx > ev.length) toy.idx = firstAt(ev, NT.now);
@@ -1851,7 +1854,7 @@ const World = (() => {
   // ---------------- music hooks ----------------
   function onNote(pitch, vel = 0.8) { W.flare = Math.min(1.6, W.flare + 0.5 * vel); if (FOLK.witch && FOLK.witch.on) { const p = FOLK.witch.g.position; burst(p, 6, hueOf(pitch).multiplyScalar(2), 0.6, 0.8, 1.4); } }
   function onBass(v = 0.7) { const g = U.gust.value[W.gustI]; W.gustI = (W.gustI + 1) % 4; cam.getWorldDirection(tv); g.set(cam.position.x + tv.x * R(6, 30) + R(-10, 10), cam.position.z + tv.z * R(6, 30) + R(-10, 10), W.t, (W.calm ? 0.25 : 0.45) * v); }
-  function onChord(c) { W.chords++; W.chordFlash = 1; CIRC.chord.copy(chordColor(c)); CIRC.chordA = 1; lanternsOnChord(false); for (const E of FOLK.elves) E.lift = 1; if (TOY.flowers && W.t - BL.lastWave > 1.1) { const p = waveOrigin(); bloomWave(p.x, p.z, chordColor(c), 1); } if (W.chords % 8 === 0) flock(); }
+  function onChord(c) { W.chords++; W.chordFlash = 1; CIRC.chord.copy(chordColor(c)); CIRC.chordA = 1; lanternsOnChord(false); for (const E of FOLK.elves) E.lift = 1; if (TOY.flowers && W.t - BL.lastWave > 0.6) { const p = waveOrigin(); bloomWave(p.x, p.z, chordColor(c), 1); } if (W.chords % 8 === 0) flock(); }
   function onBig() { if (rnd() < 0.6) flock(); lanternsOnChord(true); if (FOLK.fire) FOLK.fire.flare = 1; if (FOLK.troll) FOLK.troll.thump = W.t; if (TOY.flowers && W.t - BL.lastWave > 0.6) { const p = waveOrigin(); bloomWave(p.x, p.z, C(BLOOM_PAL[Math.floor(Math.random() * 12)]), 1.4); } }
 
   // ---------------- per frame ----------------
@@ -1947,7 +1950,7 @@ const World = (() => {
     LV.lvSlow += ((f.level || 0) - LV.lvSlow) * Math.min(1, dt * 0.15); if ((f.level || 0) - LV.lvSlow > 0.3) big = true;
     LV.onT -= dt; for (const o of (f.onsets || [])) { if (LV.onT > 0) break; LV.onT = 0.12; onNote(o, 0.7); }
     if ((f.kickHit || 0) > 0) onBass(Math.min(1, f.kickHit));
-    const ck = f.chord ? f.chord.root + f.chord.q : null; if (ck !== LV.chordKey) { if (ck) onChord(f.chord); LV.chordKey = ck; }
+    const ck = f.chord ? f.chord.root + f.chord.q : null; if (ck !== LV.chordKey) { if (ck && !(NT.kind === 'file' && NT.chords)) onChord(f.chord); LV.chordKey = ck; }
     // live audio can't see ahead: unless a scanned file is playing, toys follow the predicted beat grid
     if (NT.kind === 'midi') ntSet(null);
     if (NT.kind !== 'file') {
