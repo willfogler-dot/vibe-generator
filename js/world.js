@@ -277,9 +277,9 @@ const World = (() => {
           float mcl = clamp(mdw, 0.0, 1.0); col = mix(col, fcol, fdot * 0.9); col = mix(col, wcol * dot(col, vec3(0.3, 0.59, 0.11)) * 2.0, mcl * farB * 0.1 * winfl);
           col += wcol * wband * 0.035 * mcl;
           vec3 bloomEm = bGlow * (fcol * fdot * (0.08 + wgp * 1.4) + wcol * wband * 0.05 * mcl * winfl);
-          float rb = 0.0; for (int i = 0; i < 4; i++) { float ra = time - rRing[i].z; if (ra > 0.0 && ra < 3.0) { float dd2 = length(vWP.xz - rRing[i].xy) - ra * 20.0; rb += exp(-dd2 * dd2 / 10.0) * exp(-ra * 0.9) * rRing[i].w; } }
+          float rb = 0.0; for (int i = 0; i < 4; i++) { float ra = time - rRing[i].z; if (ra > 0.0 && ra < 3.0) { float dd2 = length(vWP.xz - rRing[i].xy) - ra * 20.0; rb += exp(-dd2 * dd2 / 3.0) * exp(-ra * 0.9) * rRing[i].w; } }
           rb = min(rb, 1.0) * (1.0 - smoothstep(0.3, 0.6, slope)) * step(waterLevel + 0.2, vWP.y);
-          vec3 rc = mix(vec3(1.0, 0.78, 0.42), ringCol, 0.6); col += rc * rb * 0.5; bloomEm += rc * rb * ringGlow;
+          vec3 rc = mix(vec3(1.0, 0.78, 0.42), ringCol, 0.45); col += rc * rb * 0.3; bloomEm += rc * rb * ringGlow;
           float beach = 1.0 - smoothstep(waterLevel + 0.4, waterLevel + 1.6 + fine, vWP.y);
           col = mix(col, mix(dirtC, vec3(0.30, 0.26, 0.19), 0.65), beach); float wet = 1.0 - smoothstep(waterLevel - 0.3, waterLevel + 0.5, vWP.y); col *= 1.0 - wet * 0.5;
           float sn = smoothstep(snowLine - 25.0, snowLine + 5.0, vWP.y + (macro - 0.5) * 50.0) * (1.0 - smoothstep(0.5, 0.75, slope));

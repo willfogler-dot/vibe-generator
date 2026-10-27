@@ -1,8 +1,9 @@
 # Vibe Generator
 
-TV for music: a warm, half-real half-fantasy valley you can leave running while music plays. Hands off, it plays like a film; take the controls whenever you want. Be a bird, a spirit, or a little adventurer on foot strolling the hiking trail.
+TV for music: a warm, half-real half-fantasy valley you can leave running while music plays. Hands off, it plays like a film; take the controls whenever you want. Be a phoenix, a spirit, or a little adventurer on foot strolling the hiking trail.
 
 **What plays along with the music**
+- **The beat:** with an audio file the whole song is scanned for its beat grid and every kick, snare and hi-hat. Each beat sends a ring of light across the ground from the phoenix; meadows hop on the kick and flash on the snare; crystals on the hills light up one after another; village lights, fireflies and the aurora pulse; the phoenix's trails flare.
 - **Bloom meadows:** every chord change sends a wave through the meadows. Flowers burst open and take the chord's colour (minor chords lean cooler), then relax back to wildflower colours.
 - **Chime circles:** rings of twelve standing stones; each note lights the stone for its pitch.
 - **Villages:** hobbit folk dance round the campfire on the beat (they sit by the fire when there's no beat), windmill sails turn a quarter turn per bar, windows breathe with the bass, and at dusk and night the village sends up sky lanterns on chord changes and big moments.
